@@ -148,6 +148,7 @@
         <div class="toolbar-divider"></div>
 
         <button class="tool-btn" onclick="undo()" title="撤销 (Ctrl+Z)">↩︎</button>
+        <button class="tool-btn" onclick="rotateCanvas()" title="顺时针旋转 90°">🔄</button>
         <button class="tool-btn" onclick="copyToClipboard()" title="复制到剪贴板 (Ctrl+C)" id="copyBtn">📋</button>
         <button class="tool-btn" onclick="saveImage()" title="保存" style="background:#28a745; color:white;">💾</button>
     </div>
@@ -612,6 +613,30 @@
             img.onload = () => { ctx.clearRect(0,0,canvas.width,canvas.height); ctx.drawImage(img,0,0); };
             img.src = history[history.length-1];
         }
+    }
+
+    function rotateCanvas() {
+        saveState();
+        // 取出当前画布内容
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = canvas.height;
+        tempCanvas.height = canvas.width;
+        const tempCtx = tempCanvas.getContext('2d');
+        // 顺时针旋转 90°
+        tempCtx.translate(tempCanvas.width / 2, tempCanvas.height / 2);
+        tempCtx.rotate(Math.PI / 2);
+        tempCtx.drawImage(canvas, -canvas.width / 2, -canvas.height / 2);
+        // 调整主画布尺寸（宽高互换）
+        const newW = canvas.height, newH = canvas.width;
+        canvas.width = newW;
+        canvas.height = newH;
+        // 填白底再绘制旋转后内容
+        ctx.fillStyle = 'white';
+        ctx.fillRect(0, 0, newW, newH);
+        ctx.drawImage(tempCanvas, 0, 0);
+        saveState();
+        // 重新适配窗口
+        fitToWindow();
     }
 
     function drawArrow(x1, y1, x2, y2) {
