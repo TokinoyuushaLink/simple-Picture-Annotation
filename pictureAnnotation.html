@@ -9,7 +9,10 @@
         
         /* 视口与画布 */
         #viewport { width: 100vw; height: 100vh; overflow: hidden; position: relative; cursor: crosshair; }
-        canvas { position: absolute; transform-origin: 0 0; background: white; box-shadow: 0 0 20px rgba(0,0,0,0.5); display: block; will-change: transform; }
+        canvas { position: absolute; transform-origin: 0 0; display: block; will-change: transform; }
+        #bg      { background: white; box-shadow: 0 0 20px rgba(0,0,0,0.5); }
+        #drawing { background: transparent; pointer-events: none; }
+        #overlay { background: transparent; pointer-events: none; }
 
         /* 右侧工具栏组合 */
         .toolbar-group { 
@@ -98,7 +101,7 @@
 </head>
 <body>
 
-<div id="viewport"><canvas id="canvas"></canvas></div>
+<div id="viewport"><canvas id="bg"></canvas><canvas id="drawing"></canvas><canvas id="overlay"></canvas></div>
 
 <textarea id="text-input" onmousedown="event.stopPropagation()" rows="1"></textarea>
 
@@ -119,7 +122,13 @@
         </div>
 
         <button class="tool-btn" onclick="setTool('arrow', this)" title="箭头">↗</button>
-        <button class="tool-btn" onclick="setTool('pen', this)" title="画笔">✏︎</button>
+        <button class="tool-btn" onclick="setTool('pen', this)" title="画笔">✎</button>
+
+        <!-- 橡皮擦工具 -->
+        <div class="tool-group">
+            <button class="tool-btn" id="eraserBtn" onclick="setTool('eraser-circle', this)" title="橡皮擦">🗞️</button>
+        </div>
+
         <button class="tool-btn" onclick="setTool('text', this)" title="文字" style="font-size:15px;font-weight:bold;">T</button>
 
         <!-- 直线工具 -->
@@ -148,7 +157,7 @@
         <div class="toolbar-divider"></div>
 
         <button class="tool-btn" onclick="undo()" title="撤销 (Ctrl+Z)">↩︎</button>
-        <button class="tool-btn" onclick="rotateCanvas()" title="顺时针旋转 90°">🔄</button>
+        <button class="tool-btn" onclick="rotateCanvas()" title="顺时针旋转 90°">↻</button>
         <button class="tool-btn" onclick="copyToClipboard()" title="复制到剪贴板 (Ctrl+C)" id="copyBtn">📋</button>
         <button class="tool-btn" onclick="saveImage()" title="保存" style="background:#28a745; color:white;">💾</button>
     </div>
@@ -157,8 +166,12 @@
 <div class="hint">双指平移 / 捏合缩放 | 鼠标右键平移 | 滚轮缩放 | 中键适合窗口 | Shift+画笔=直线</div>
 
 <script>
-    const canvas = document.getElementById('canvas');
+    const bg = document.getElementById('bg');
+    const bgCtx = bg.getContext('2d');
+    const canvas = document.getElementById('drawing');
     const ctx = canvas.getContext('2d');
+    const overlay = document.getElementById('overlay');
+    const octx = overlay.getContext('2d');
     const viewport = document.getElementById('viewport');
     const textInput = document.getElementById('text-input');
     const sizePreview = document.getElementById('size-preview');
@@ -229,8 +242,9 @@
     lineWidthInput.onchange = () => sizePreview.style.display = 'none';
 
     function initCanvas(w, h) {
-        canvas.width = w;
-        canvas.height = h;
+        bg.width = w; bg.height = h;
+        canvas.width = w; canvas.height = h;
+        overlay.width = w; overlay.height = h;
         
         // 自动缩放以适应屏幕
         const margin = 60;
@@ -243,8 +257,10 @@
         scrollX = (window.innerWidth - w * scale) / 2;
         scrollY = (window.innerHeight - h * scale) / 2;
         
-        ctx.fillStyle = "white";
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        // 背景层填白，批注层清空
+        bgCtx.fillStyle = 'white';
+        bgCtx.fillRect(0, 0, w, h);
+        ctx.clearRect(0, 0, w, h);
         saveState();
         updateTransform();
     }
@@ -416,6 +432,23 @@
         if (['line-solid', 'line-short-dash', 'line-long-dash', 'line-wave'].includes(tool)) {
             snapshot = ctx.getImageData(0, 0, canvas.width, canvas.height);
         }
+        // 橡皮擦工具初始化（destination-out 真正擦除批注层）
+        if (tool === 'eraser-circle') {
+            const size = parseInt(lineWidthInput.value) * 4;
+            ctx.globalCompositeOperation = 'destination-out';
+            ctx.strokeStyle = 'rgba(0,0,0,1)';
+            ctx.lineWidth = size;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            snapshot = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            prevPos = { x: startX, y: startY };
+            ctx.beginPath();
+            ctx.moveTo(startX, startY);
+            ctx.lineTo(startX + 0.01, startY);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(startX, startY);
+        }
     };
 
     // 动态文本功能
@@ -501,10 +534,57 @@
     }
 
     window.onmousemove = e => {
-        if (isPanning) { scrollX += e.movementX; scrollY += e.movementY; updateTransform(); return; }
+        if (isPanning) { scrollX += e.movementX; scrollY += e.movementY; updateTransform(); }
+
+        // 橡皮擦光标：在 overlay canvas 上绘制预览（与画布同步变换）
+        if (tool === 'eraser-circle') {
+            const pos = getMousePos(e);
+            const size = parseInt(lineWidthInput.value) * 4;
+            const half = size / 2;
+            octx.clearRect(0, 0, overlay.width, overlay.height);
+            octx.save();
+            octx.strokeStyle = 'rgba(80,80,80,0.85)';
+            octx.lineWidth = 1.5 / scale;   // 线宽不随缩放放大
+            octx.setLineDash([3 / scale, 3 / scale]);
+            octx.beginPath();
+            if (tool === 'eraser-circle') {
+                octx.arc(pos.x, pos.y, half, 0, Math.PI * 2);
+            } else {
+                octx.rect(pos.x - half, pos.y - half, size, size);
+            }
+            octx.stroke();
+            octx.restore();
+        } else {
+            octx.clearRect(0, 0, overlay.width, overlay.height);
+        }
+
+        if (isPanning) return;
         if (!isDrawing) return;
         const pos = getMousePos(e);
         lastPos = pos;
+
+        // 圆形橡皮擦：贝塞尔平滑路径（destination-out 擦除批注层）
+        if (tool === 'eraser-circle') {
+            if (e.shiftKey) {
+                // Shift 按住：直线擦除预览
+                ctx.putImageData(snapshot, 0, 0);
+                ctx.globalCompositeOperation = 'destination-out';
+                ctx.beginPath();
+                ctx.moveTo(startX, startY);
+                ctx.lineTo(pos.x, pos.y);
+                ctx.stroke();
+            } else {
+                // 自由擦除：贝塞尔平滑
+                const midX = (prevPos.x + pos.x) / 2;
+                const midY = (prevPos.y + pos.y) / 2;
+                ctx.quadraticCurveTo(prevPos.x, prevPos.y, midX, midY);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(midX, midY);
+                prevPos = pos;
+            }
+            return;
+        }
 
         if (tool !== 'pen') { 
             ctx.putImageData(snapshot, 0, 0); 
@@ -593,10 +673,18 @@
         }
     };
 
-    window.onmouseup = () => { if(isDrawing) { isDrawing = false; saveState(); } isPanning = false; };
+    window.onmouseup = () => { 
+        if(isDrawing) { 
+            isDrawing = false; 
+            // 橡皮擦结束后重置合成模式
+            if (tool === 'eraser-circle') ctx.globalCompositeOperation = 'source-over';
+            saveState(); 
+        } 
+        isPanning = false; 
+    };
 
     function getMousePos(e) { return { x: (e.clientX - scrollX) / scale, y: (e.clientY - scrollY) / scale }; }
-    function updateTransform() { requestAnimationFrame(() => canvas.style.transform = `translate(${scrollX}px, ${scrollY}px) scale(${scale})`); }
+    function updateTransform() { requestAnimationFrame(() => { const t = `translate(${scrollX}px, ${scrollY}px) scale(${scale})`; bg.style.transform = t; canvas.style.transform = t; overlay.style.transform = t; }); }
     function fitToWindow() {
         const margin = 60;
         scale = Math.min((window.innerWidth - margin) / canvas.width, (window.innerHeight - margin) / canvas.height);
@@ -617,25 +705,32 @@
 
     function rotateCanvas() {
         saveState();
-        // 取出当前画布内容
-        const tempCanvas = document.createElement('canvas');
-        tempCanvas.width = canvas.height;
-        tempCanvas.height = canvas.width;
-        const tempCtx = tempCanvas.getContext('2d');
-        // 顺时针旋转 90°
-        tempCtx.translate(tempCanvas.width / 2, tempCanvas.height / 2);
-        tempCtx.rotate(Math.PI / 2);
-        tempCtx.drawImage(canvas, -canvas.width / 2, -canvas.height / 2);
-        // 调整主画布尺寸（宽高互换）
         const newW = canvas.height, newH = canvas.width;
-        canvas.width = newW;
-        canvas.height = newH;
-        // 填白底再绘制旋转后内容
-        ctx.fillStyle = 'white';
-        ctx.fillRect(0, 0, newW, newH);
-        ctx.drawImage(tempCanvas, 0, 0);
+
+        // 旋转背景层
+        const tempBg = document.createElement('canvas');
+        tempBg.width = newW; tempBg.height = newH;
+        const tbCtx = tempBg.getContext('2d');
+        tbCtx.translate(newW / 2, newH / 2);
+        tbCtx.rotate(Math.PI / 2);
+        tbCtx.drawImage(bg, -bg.width / 2, -bg.height / 2);
+
+        // 旋转批注层
+        const tempDraw = document.createElement('canvas');
+        tempDraw.width = newW; tempDraw.height = newH;
+        const tdCtx = tempDraw.getContext('2d');
+        tdCtx.translate(newW / 2, newH / 2);
+        tdCtx.rotate(Math.PI / 2);
+        tdCtx.drawImage(canvas, -canvas.width / 2, -canvas.height / 2);
+
+        bg.width = newW; bg.height = newH;
+        canvas.width = newW; canvas.height = newH;
+        overlay.width = newW; overlay.height = newH;
+
+        bgCtx.drawImage(tempBg, 0, 0);
+        ctx.drawImage(tempDraw, 0, 0);
+
         saveState();
-        // 重新适配窗口
         fitToWindow();
     }
 
@@ -688,10 +783,21 @@
             const reader = new FileReader();
             reader.onload = (ev) => {
                 const img = new Image();
-                img.onload = () => { 
-                    initCanvas(img.width, img.height); 
-                    ctx.drawImage(img, 0, 0, canvas.width, canvas.height); 
-                    saveState(); 
+                img.onload = () => {
+                    const w = img.width, h = img.height;
+                    bg.width = w; bg.height = h;
+                    canvas.width = w; canvas.height = h;
+                    overlay.width = w; overlay.height = h;
+                    const margin = 60;
+                    scale = Math.min((window.innerWidth - margin) / w, (window.innerHeight - margin) / h);
+                    if (scale > 1) scale = 1;
+                    scrollX = (window.innerWidth - w * scale) / 2;
+                    scrollY = (window.innerHeight - h * scale) / 2;
+                    bgCtx.drawImage(img, 0, 0, w, h);
+                    ctx.clearRect(0, 0, w, h);
+                    history = [];
+                    saveState();
+                    updateTransform();
                 };
                 img.src = ev.target.result;
             };
@@ -706,7 +812,22 @@
             const reader = new FileReader();
             reader.onload = (ev) => {
                 const img = new Image();
-                img.onload = () => { initCanvas(img.width, img.height); ctx.drawImage(img,0,0,canvas.width,canvas.height); saveState(); };
+                img.onload = () => {
+                    const w = img.width, h = img.height;
+                    bg.width = w; bg.height = h;
+                    canvas.width = w; canvas.height = h;
+                    overlay.width = w; overlay.height = h;
+                    const margin = 60;
+                    scale = Math.min((window.innerWidth - margin) / w, (window.innerHeight - margin) / h);
+                    if (scale > 1) scale = 1;
+                    scrollX = (window.innerWidth - w * scale) / 2;
+                    scrollY = (window.innerHeight - h * scale) / 2;
+                    bgCtx.drawImage(img, 0, 0, w, h);
+                    ctx.clearRect(0, 0, w, h);
+                    history = [];
+                    saveState();
+                    updateTransform();
+                };
                 img.src = ev.target.result;
             };
             reader.readAsDataURL(file);
@@ -796,26 +917,45 @@
             document.getElementById('lineBtn').classList.add('active');
         } else if (['stamp-check', 'stamp-star'].includes(t)) {
             document.getElementById('stampBtn').classList.add('active');
+        } else if (t === 'eraser-circle') {
+            document.getElementById('eraserBtn').classList.add('active');
+            viewport.style.cursor = 'none';
         } else {
             btn.classList.add('active');
         }
+        // 非橡皮擦工具时恢复光标并清除 overlay
+        if (t !== 'eraser-circle') {
+            viewport.style.cursor = 'crosshair';
+            octx.clearRect(0, 0, overlay.width, overlay.height);
+        }
     }
-    function saveImage() { const link = document.createElement('a'); link.download = 'mark.png'; link.href = canvas.toDataURL(); link.click(); }
+    function getMergedCanvas() {
+        const merged = document.createElement('canvas');
+        merged.width = bg.width; merged.height = bg.height;
+        const mCtx = merged.getContext('2d');
+        mCtx.drawImage(bg, 0, 0);
+        mCtx.drawImage(canvas, 0, 0);
+        return merged;
+    }
+    function saveImage() {
+        const now = new Date();
+        const pad = n => String(n).padStart(2, '0');
+        const name = `${now.getFullYear()}${pad(now.getMonth()+1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}.png`;
+        const link = document.createElement('a'); link.download = name; link.href = getMergedCanvas().toDataURL(); link.click();
+    }
 
     async function copyToClipboard() {
         const btn = document.getElementById('copyBtn');
         try {
-            const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+            const blob = await new Promise(resolve => getMergedCanvas().toBlob(resolve, 'image/png'));
             await navigator.clipboard.write([
                 new ClipboardItem({ 'image/png': blob })
             ]);
-            // 短暂反馈
             btn.textContent = '✅';
             btn.style.background = '#28a745';
             btn.style.color = 'white';
             setTimeout(() => { btn.textContent = '📋'; btn.style.background = ''; btn.style.color = ''; }, 1500);
         } catch (err) {
-            // 降级：弹出提示
             btn.textContent = '❌';
             setTimeout(() => { btn.textContent = '📋'; }, 1500);
             console.warn('复制失败:', err);
@@ -830,7 +970,8 @@
         if (isDrawing) {
             if ((tool === 'arrow' && e.key === 'Control') || 
                 (['rect', 'circle', 'triangle', 'rect-fill', 'circle-fill', 'triangle-fill'].includes(tool) && e.key === 'Shift') ||
-                (tool === 'pen' && e.key === 'Shift')) {
+                (tool === 'pen' && e.key === 'Shift') ||
+                (tool === 'eraser-circle' && e.key === 'Shift')) {
                 // 触发一次 mousemove 来更新绘图
                 const ev = new MouseEvent('mousemove', {
                     clientX: lastPos.x * scale + scrollX, 
@@ -875,12 +1016,30 @@
                 ctx.beginPath();
                 ctx.moveTo(startX, startY);
             }
+            // Shift 松开时，橡皮擦从直线模式恢复为自由擦除
+            if (tool === 'eraser-circle' && e.key === 'Shift') {
+                ctx.putImageData(snapshot, 0, 0);
+                // 固化直线擦除到 snapshot，再从终点继续自由擦除
+                ctx.globalCompositeOperation = 'destination-out';
+                ctx.beginPath();
+                ctx.moveTo(startX, startY);
+                ctx.lineTo(lastPos.x, lastPos.y);
+                ctx.stroke();
+                snapshot = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                startX = lastPos.x; startY = lastPos.y;
+                prevPos = { x: startX, y: startY };
+                ctx.beginPath();
+                ctx.moveTo(startX, startY);
+            }
         }
     };
     viewport.oncontextmenu = e => {
         // 只阻止画布区域的右键菜单，工具栏按钮的右键事件放行
         if (!e.target.closest('.toolbar-group')) e.preventDefault();
     };
+    viewport.addEventListener('mouseleave', () => {
+        octx.clearRect(0, 0, overlay.width, overlay.height);
+    });
     viewport.addEventListener('mousedown', e => { if (e.button === 1) e.preventDefault(); });
 </script>
 <!-- 二级菜单（挂载在 body 上，避免 stacking context 问题） -->
