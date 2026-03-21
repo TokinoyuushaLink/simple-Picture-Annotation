@@ -34,7 +34,7 @@
     #viewport {
         width: 100vw; height: 100vh;
         overflow: hidden; position: relative;
-        cursor: crosshair;
+        cursor: crosshair; z-index: 1;
     }
     canvas {
         position: absolute; transform-origin: 0 0;
@@ -265,7 +265,7 @@
     ===================================================================== */
     #toolbar-hidden-hint {
         position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%);
-        display: none; pointer-events: none;
+        display: none; pointer-events: none; z-index: 0;
         color: rgba(255,255,255,0.38); font-size: 11px;
         letter-spacing: 0.04em; white-space: nowrap;
     }
@@ -690,7 +690,6 @@
 
         // 印章工具：查表取字符，用 fillText 统一渲染，居中对齐点击位置
         if (STAMP_TOOLS.includes(tool)) {
-            saveState();
             const size = parseInt(lineWidthInput.value) * 6;
             ctx.save();
             ctx.fillStyle = currentColor;
@@ -988,7 +987,6 @@
     }
 
     function rotateCanvas() {
-        saveState();
         const newW = canvas.height, newH = canvas.width;
 
         function rotateLayer(src) {
