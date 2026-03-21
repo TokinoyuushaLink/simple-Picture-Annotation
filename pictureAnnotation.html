@@ -14,7 +14,7 @@
             --surface-card:    rgba(255,255,255,0.05);
             --surface-hover:   rgba(255,255,255,0.08);
             --surface-press:   rgba(255,255,255,0.04);
-            --surface-active:  rgba(96,205,255,0.18);
+            --surface-active:  rgba(128,128,128,0.40);
             --accent:          #60cdff;
             --accent-light:    #99e0ff;
             --text-primary:    rgba(255,255,255,0.89);
@@ -103,7 +103,7 @@
             background: var(--mica-base);
             backdrop-filter: blur(40px) saturate(180%);
             -webkit-backdrop-filter: blur(40px) saturate(180%);
-            padding: 12px 6px;
+            padding: 12px 8px;
             border-radius: 0;
             display: flex; flex-direction: column; gap: 2px;
             box-shadow: -2px 0 24px rgba(0,0,0,0.35);
@@ -138,8 +138,7 @@
         .tool-btn:active { background: var(--surface-press); transform: scale(0.94); }
         .tool-btn.active {
             background: var(--surface-active);
-            color: var(--accent-light);
-            box-shadow: inset 0 0 0 1px rgba(96,205,255,0.35);
+            color: var(--#fff);
         }
 
 
@@ -195,6 +194,26 @@
 
         .hint { position: fixed; bottom: 15px; left: 15px; color: #888; font-size: 12px; pointer-events: none; }
 
+        /* 工具栏隐藏提示 */
+        #toolbar-hidden-hint {
+            position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%);
+            color: rgba(255,255,255,0.38); font-size: 11px;
+            pointer-events: none; display: none;
+            letter-spacing: 0.04em;
+            white-space: nowrap;
+        }
+
+        /* 工具栏滑动过渡（仅 transform，无 opacity） */
+        .toolbar-group {
+            transition: transform 0.45s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .toolbar-group.hidden {
+            transform: translateX(calc(100% + 16px));
+            pointer-events: none;
+        }
+
+
+
         /* 橡皮擦反色光标 */
         #eraser-cursor {
             position: fixed; border-radius: 50%; background: transparent;
@@ -245,7 +264,7 @@
 <textarea id="text-input" onmousedown="event.stopPropagation()" rows="1"></textarea>
 
     <!-- 滑动条面板：独立，固定在右侧，垂直居中 -->
-    <div style="position:fixed;right:60px;top:50%;transform:translateY(-50%);z-index:1000;pointer-events:auto;" onmousedown="event.stopPropagation()">
+    <div id="sliderPanel" style="position:fixed;right:64px;top:50%;transform:translateY(-50%);z-index:1000;pointer-events:auto;transition:transform 0.45s cubic-bezier(0.4,0,0.2,1);" onmousedown="event.stopPropagation()">
         <div style="position:relative;display:flex;flex-direction:column;align-items:center;gap:6px;">
             <div id="size-preview" style="position:absolute;right:calc(100% + 8px);top:50%;transform:translateY(-50%);"><div id="size-preview-dot"></div></div>
             <div class="slider-container">
@@ -254,7 +273,7 @@
         </div>
     </div>
     <!-- 自定义颜色面板：独立，顶部与滑动条底部对齐（50% + 85px = 滑动条组合底边）加 8px 间距 -->
-    <div style="position:fixed;right:60px;top:calc(50% + 85px);z-index:1001;pointer-events:auto;" onmousedown="event.stopPropagation()">
+    <div id="colorPanel" style="position:fixed;right:64px;top:calc(50% + 85px);z-index:1001;pointer-events:auto;transition:transform 0.45s cubic-bezier(0.4,0,0.2,1);" onmousedown="event.stopPropagation()">
         <div class="custom-color-col">
             <button class="mini-btn" onclick="addCustomColor()" title="添加颜色" style="width:20px;height:20px;font-size:14px;">+</button>
             <div id="customColorPalette" style="display:flex;flex-direction:column;gap:5px;align-items:center;"></div>
@@ -267,13 +286,13 @@
         <!-- 组1：新建 复制 保存 -->
         <button class="tool-btn" onclick="newCanvas()" title="新建画布">📄</button>
         <button class="tool-btn" onclick="copyToClipboard()" title="复制到剪贴板 (Ctrl+C)" id="copyBtn">📋</button>
-        <button class="tool-btn" onclick="saveImage()" title="保存" style="background:rgba(96,205,255,0.18); color:#99e0ff;">💾</button>
+        <button class="tool-btn" onclick="saveImage()" title="保存" style=" color:#99e0ff;">💾</button>
 
         <div class="toolbar-divider"></div>
 
         <!-- 组2：方框 箭头 直线 文字 -->
         <div class="tool-group">
-            <button class="tool-btn active" id="shapeBtn" onclick="setTool(currentShape, this)" oncontextmenu="toggleShapeMenu(event)">☐</button>
+            <button class="tool-btn active" id="shapeBtn" onclick="setTool(currentShape, this)" oncontextmenu="toggleShapeMenu(event)">▢</button>
         </div>
         <button class="tool-btn" onclick="setTool('arrow', this)" title="箭头">➔</button>
         <!-- 直线工具 -->
@@ -320,6 +339,9 @@
 </div>
 
 <div id="eraser-cursor"></div>
+
+<!-- 工具栏隐藏提示 -->
+<div id="toolbar-hidden-hint">工具栏已隐藏 · Tab 键恢复</div>
 
 <script>
     const bg = document.getElementById('bg');
@@ -1244,6 +1266,22 @@
     window.onkeydown = e => { 
         if(e.ctrlKey && e.key === 'z') undo();
         if(e.ctrlKey && e.key === 'c' && document.activeElement !== textInput) copyToClipboard();
+
+        // Tab 键切换工具栏显示/隐藏
+        if (e.key === 'Tab') {
+            e.preventDefault();
+            const toolbarGroup = document.querySelector('.toolbar-group');
+            const sliderPanel  = document.getElementById('sliderPanel');
+            const colorPanel   = document.getElementById('colorPanel');
+            const hint         = document.getElementById('toolbar-hidden-hint');
+            const isHidden = toolbarGroup.classList.toggle('hidden');
+            // 滑动条保留原有 translateY(-50%)，追加 translateX 偏移
+            sliderPanel.style.transform = isHidden ? 'translateY(-50%) translateX(200px)' : 'translateY(-50%)';
+            sliderPanel.style.pointerEvents = isHidden ? 'none' : 'auto';
+            colorPanel.style.transform  = isHidden ? 'translateX(200px)' : '';
+            colorPanel.style.pointerEvents = isHidden ? 'none' : 'auto';
+            hint.style.display = isHidden ? 'block' : 'none';
+        }
         
         // 实时响应 Ctrl (箭头反转) 和 Shift (正形状/直线)
         if (isDrawing) {
@@ -1327,7 +1365,7 @@
 <!-- 二级菜单（挂载在 body 上，避免 stacking context 问题） -->
 <div class="sub-menu" id="shapeSubMenu">
     <div class="sub-menu-row">
-        <button class="tool-btn" onclick="selectShape('rect', '☐')">☐</button>
+        <button class="tool-btn" onclick="selectShape('rect', '☐')">▢</button>
         <button class="tool-btn" onclick="selectShape('circle', '◯')">◯</button>
         <button class="tool-btn" onclick="selectShape('triangle', '△')">△</button>
     </div>
