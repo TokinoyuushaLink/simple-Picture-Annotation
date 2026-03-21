@@ -4,256 +4,286 @@
     <meta charset="UTF-8">
     <title>图片标记工具</title>
     <style>
-        :root {
-            --primary: #60cdff;
-            --bg: #202020;
-            /* WinUI 3 Mica Dark tokens */
-            --mica-base:       rgba(36, 36, 36, 0.90);
-            --mica-border:     rgba(255,255,255,0.08);
-            --mica-divider:    rgba(255,255,255,0.10);
-            --surface-card:    rgba(255,255,255,0.05);
-            --surface-hover:   rgba(255,255,255,0.08);
-            --surface-press:   rgba(255,255,255,0.04);
-            --surface-active:  rgba(128,128,128,0.40);
-            --accent:          #60cdff;
-            --accent-light:    #99e0ff;
-            --text-primary:    rgba(255,255,255,0.89);
-            --text-secondary:  rgba(255,255,255,0.55);
-            --shadow-flyout:   0 8px 32px rgba(0,0,0,0.45), 0 2px 8px rgba(0,0,0,0.3);
-        }
-        body, html {
-            margin: 0; padding: 0; height: 100%; overflow: hidden;
-            background: var(--bg);
-            font-family: 'Segoe UI Variable', 'Segoe UI', system-ui, sans-serif;
-        }
-        
-        /* 视口与画布 */
-        #viewport { width: 100vw; height: 100vh; overflow: hidden; position: relative; cursor: crosshair; }
-        canvas { position: absolute; transform-origin: 0 0; display: block; will-change: transform; }
-        #bg      { background: white; box-shadow: 0 0 40px rgba(0,0,0,0.6); }
-        #drawing { background: transparent; pointer-events: none; }
+    /* =====================================================================
+       设计令牌 — WinUI 3 Mica Dark
+    ===================================================================== */
+    :root {
+        --bg:              #202020;
+        --mica-base:       rgba(36, 36, 36, 0.90);
+        --mica-border:     rgba(255, 255, 255, 0.08);
+        --mica-divider:    rgba(255, 255, 255, 0.10);
+        --surface-card:    rgba(255, 255, 255, 0.05);
+        --surface-hover:   rgba(255, 255, 255, 0.08);
+        --surface-press:   rgba(255, 255, 255, 0.04);
+        --surface-active:  rgba(128, 128, 128, 0.40);
+        --accent:          #60cdff;
+        --accent-light:    #99e0ff;
+        --text-primary:    rgba(255, 255, 255, 0.89);
+        --text-secondary:  rgba(255, 255, 255, 0.55);
+        --shadow-flyout:   0 8px 32px rgba(0,0,0,0.45), 0 2px 8px rgba(0,0,0,0.3);
+    }
 
-        /* 右侧工具栏组合 — 停靠右边，上下填充全屏 */
-        .toolbar-group { 
-            position: fixed; right: 0; top: 0; bottom: 0;
-            display: flex; align-items: stretch; flex-direction: row; gap: 6px;
-            z-index: 1000; pointer-events: auto;
-            padding: 0 0 0 0;
-        }
+    /* =====================================================================
+       基础 / 画布
+    ===================================================================== */
+    body, html {
+        margin: 0; padding: 0; height: 100%; overflow: hidden;
+        background: var(--bg);
+        font-family: 'Segoe UI Variable', 'Segoe UI', system-ui, sans-serif;
+    }
+    #viewport {
+        width: 100vw; height: 100vh;
+        overflow: hidden; position: relative;
+        cursor: crosshair;
+    }
+    canvas {
+        position: absolute; transform-origin: 0 0;
+        display: block; will-change: transform;
+    }
+    #bg      { background: white; box-shadow: 0 0 40px rgba(0,0,0,0.6); }
+    #drawing { background: transparent; pointer-events: none; }
 
-        /* 描边预览 — Mica 卡片 */
-        #size-preview {
-            width: 36px; height: 36px;
-            background: var(--mica-base);
-            backdrop-filter: blur(40px) saturate(180%);
-            -webkit-backdrop-filter: blur(40px) saturate(180%);
-            border-radius: 8px;
-            display: none; align-items: center; justify-content: center;
-            box-shadow: var(--shadow-flyout);
-            border: 1px solid var(--mica-border);
-        }
-        #size-preview-dot { background: #fff; border-radius: 50%; }
+    /* =====================================================================
+       工具栏外层容器
+    ===================================================================== */
+    .toolbar-group {
+        position: fixed; right: 0; top: 0; bottom: 0;
+        display: flex; align-items: stretch; flex-direction: row; gap: 6px;
+        z-index: 1000; pointer-events: auto;
+        transition: transform 0.45s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .toolbar-group.hidden {
+        transform: translateX(calc(100% + 16px));
+        pointer-events: none;
+    }
 
-        /* 竖直滑动条容器 — Mica 卡片 */
-        .slider-container {
-            display: flex; flex-direction: column; align-items: center;
-            background: var(--mica-base);
-            backdrop-filter: blur(40px) saturate(180%);
-            -webkit-backdrop-filter: blur(40px) saturate(180%);
-            padding: 10px 6px; border-radius: 12px;
-            box-shadow: var(--shadow-flyout);
-            border: 1px solid var(--mica-border);
-        }
-        input[type="range"].vertical {
-            cursor: pointer;
-            -webkit-appearance: slider-vertical;
-            appearance: slider-vertical;
-            width: 18px; height: 130px;
-            z-index: 1001;
-            accent-color: var(--accent);
-        }
+    /* =====================================================================
+       主工具栏面板
+    ===================================================================== */
+    .toolbar {
+        background: var(--mica-base);
+        backdrop-filter: blur(40px) saturate(180%);
+        -webkit-backdrop-filter: blur(40px) saturate(180%);
+        border-left: 1px solid var(--mica-border);
+        box-shadow: -2px 0 24px rgba(0,0,0,0.35);
+        padding: 12px 8px;
+        display: flex; flex-direction: column; gap: 2px;
+        align-items: center; align-self: stretch; justify-content: center;
+        overflow-y: auto;
+    }
+    .toolbar-divider {
+        width: 75%; height: 1px;
+        background: var(--mica-divider);
+        margin: 4px 0;
+    }
 
-        /* 工具组二级菜单 — Flyout 弹出层 */
-        .tool-group { position: relative; display: flex; justify-content: center; }
-        .sub-menu {
-            position: fixed;
-            display: none;
-            background: var(--mica-base);
-            backdrop-filter: blur(60px) saturate(200%);
-            -webkit-backdrop-filter: blur(60px) saturate(200%);
-            border-radius: 10px;
-            padding: 6px;
-            box-shadow: var(--shadow-flyout);
-            border: 1px solid var(--mica-border);
-            flex-direction: column;
-            gap: 2px;
-            z-index: 2000;
-        }
-        .sub-menu.show { display: flex; animation: flyoutIn 0.18s cubic-bezier(0.1, 0.9, 0.2, 1); }
-        .sub-menu-row { display: flex; flex-direction: row; gap: 2px; }
-        .sub-menu-divider { height: 1px; width: 100%; background: var(--mica-divider); margin: 3px 0; }
+    /* =====================================================================
+       工具按钮
+    ===================================================================== */
+    .tool-btn {
+        width: 36px; height: 36px;
+        border: none; background: transparent; border-radius: 6px;
+        cursor: pointer; flex-shrink: 0; position: relative;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 16px; color: var(--text-primary);
+        transition: background 0.1s, transform 0.08s;
+    }
+    .tool-btn:hover  { background: var(--surface-hover); }
+    .tool-btn:active { background: var(--surface-press); transform: scale(0.94); }
+    .tool-btn.active { background: var(--surface-active); color: #fff; }
 
-        @keyframes flyoutIn {
-            from { opacity: 0; transform: translateX(10px) scale(0.96); }
-            to   { opacity: 1; transform: translateX(0)   scale(1); }
-        }
+    /* =====================================================================
+       二级弹出菜单 (Flyout)
+    ===================================================================== */
+    .tool-group { position: relative; display: flex; justify-content: center; }
+    .sub-menu {
+        position: fixed; z-index: 2000;
+        display: none; flex-direction: column; gap: 2px;
+        background: var(--mica-base);
+        backdrop-filter: blur(60px) saturate(200%);
+        -webkit-backdrop-filter: blur(60px) saturate(200%);
+        border: 1px solid var(--mica-border);
+        border-radius: 10px; padding: 6px;
+        box-shadow: var(--shadow-flyout);
+    }
+    .sub-menu.show { display: flex; animation: flyoutIn 0.18s cubic-bezier(0.1, 0.9, 0.2, 1); }
+    .sub-menu-row  { display: flex; flex-direction: row; gap: 2px; }
+    .sub-menu-divider { height: 1px; width: 100%; background: var(--mica-divider); margin: 3px 0; }
 
-        /* 主工具栏 — 停靠面板，上下填充 */
-        .toolbar { 
-            background: var(--mica-base);
-            backdrop-filter: blur(40px) saturate(180%);
-            -webkit-backdrop-filter: blur(40px) saturate(180%);
-            padding: 12px 8px;
-            border-radius: 0;
-            display: flex; flex-direction: column; gap: 2px;
-            box-shadow: -2px 0 24px rgba(0,0,0,0.35);
-            border-left: 1px solid var(--mica-border);
-            border-top: none; border-right: none; border-bottom: none;
-            align-items: center;
-            align-self: stretch;
-            justify-content: center;
-            overflow-y: auto;
-        }
-        .toolbar-divider {
-            width: 75%; height: 1px;
-            background: var(--mica-divider);
-            margin: 4px 0;
-        }
+    @keyframes flyoutIn {
+        from { opacity: 0; transform: translateX(10px) scale(0.96); }
+        to   { opacity: 1; transform: translateX(0)    scale(1); }
+    }
 
-        /* 工具按钮 — Fluent Reveal */
-        .tool-btn { 
-            width: 36px; height: 36px;
-            border: none;
-            background: transparent;
-            border-radius: 6px; 
-            cursor: pointer;
-            display: flex; align-items: center; justify-content: center;
-            font-size: 16px;
-            transition: background 0.1s, transform 0.08s;
-            flex-shrink: 0;
-            color: var(--text-primary);
-            position: relative;
-        }
-        .tool-btn:hover  { background: var(--surface-hover); }
-        .tool-btn:active { background: var(--surface-press); transform: scale(0.94); }
-        .tool-btn.active {
-            background: var(--surface-active);
-            color: var(--#fff);
-        }
+    /* =====================================================================
+       笔触粗细预览（滑块旁浮动气泡）
+    ===================================================================== */
+    #size-preview {
+        display: none;
+        width: 36px; height: 36px;
+        position: absolute; right: calc(100% + 8px); top: 50%; transform: translateY(-50%);
+        background: var(--mica-base);
+        backdrop-filter: blur(40px) saturate(180%);
+        -webkit-backdrop-filter: blur(40px) saturate(180%);
+        border: 1px solid var(--mica-border); border-radius: 8px;
+        box-shadow: var(--shadow-flyout);
+        align-items: center; justify-content: center;
+    }
+    #size-preview.show { display: flex; }
+    #size-preview-dot  { background: #fff; border-radius: 50%; }
 
+    /* =====================================================================
+       笔触粗细滑块面板
+    ===================================================================== */
+    #sliderPanel {
+        position: fixed; right: 64px; top: 50%; z-index: 1000;
+        transform: translateY(-50%);
+        transition: transform 0.45s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .slider-container {
+        display: flex; flex-direction: column; align-items: center;
+        background: var(--mica-base);
+        backdrop-filter: blur(40px) saturate(180%);
+        -webkit-backdrop-filter: blur(40px) saturate(180%);
+        border: 1px solid var(--mica-border); border-radius: 12px;
+        padding: 10px 6px; box-shadow: var(--shadow-flyout);
+    }
+    input[type="range"].vertical {
+        -webkit-appearance: slider-vertical; appearance: slider-vertical;
+        width: 18px; height: 130px; z-index: 1001;
+        cursor: pointer; accent-color: var(--accent);
+    }
 
-        /* 颜色面板 */
-        .color-panel { display: grid; grid-template-columns: repeat(2, 1fr); gap: 5px; margin-bottom: 2px;}
-        .color-dot {
-            width: 16px; height: 16px; border-radius: 4px; cursor: pointer;
-            border: 1px solid rgba(255,255,255,0.12);
-            transition: transform 0.12s, box-shadow 0.12s;
-        }
-        .color-label { font-size: 9px; color: var(--text-secondary); margin-bottom: 2px; text-align: center; width: 100%; letter-spacing: 0.02em; }
-        .color-picker-row { display: flex; gap: 3px; align-items: center; }
-        #customColor {
-            width: 36px; height: 22px;
-            border: 1px solid var(--mica-border); border-radius: 4px;
-            padding: 3px; background: none; cursor: pointer;
-        }
-        .mini-btn {
-            width: 22px; height: 22px;
-            border: 1px solid var(--mica-border);
-            background: var(--surface-card);
-            border-radius: 5px; cursor: pointer;
-            display: flex; align-items: center; justify-content: center;
-            font-size: 13px; padding: 0; color: var(--text-primary);
-            transition: background 0.1s;
-        }
-        .mini-btn:hover { background: var(--surface-hover); }
+    /* =====================================================================
+       颜色面板
+    ===================================================================== */
+    .color-panel  { display: grid; grid-template-columns: repeat(2, 1fr); gap: 5px; margin-bottom: 2px; }
+    .color-label  { font-size: 9px; color: var(--text-secondary); margin-bottom: 2px; text-align: center; width: 100%; letter-spacing: 0.02em; }
+    .color-dot {
+        width: 16px; height: 16px; border-radius: 4px; cursor: pointer;
+        border: 1px solid rgba(255,255,255,0.12);
+        transition: transform 0.12s, box-shadow 0.12s;
+    }
+    .color-picker-row { display: flex; gap: 3px; align-items: center; }
+    #customColor {
+        width: 36px; height: 22px;
+        border: 1px solid var(--mica-border); border-radius: 4px;
+        padding: 3px; background: none; cursor: pointer;
+    }
 
-        /* 自定义颜色列 — 独立浮动列，底部对齐 */
-        .custom-color-col {
-            display: flex; flex-direction: column; align-items: center;
-            gap: 7px;
-            background: var(--mica-base);
-            backdrop-filter: blur(40px) saturate(180%);
-            -webkit-backdrop-filter: blur(40px) saturate(180%);
-            padding: 8px 0px;
-            border-radius: 12px;
-            box-shadow: var(--shadow-flyout);
-            border: 1px solid var(--mica-border);
-            min-width: 34px;
-        }
-        .custom-color-col .color-dot {
-            width: 18px; height: 18px; border-radius: 5px;
-        }
-        
-        /* 动态输入框 */
-        #text-input {
-            position: fixed; display: none; background: transparent; border: 1px dashed #666;
-            outline: none; padding: 2px 4px; margin: 0; line-height: 1.2; overflow: hidden;
-            white-space: pre-wrap; word-break: break-all; font-family: Arial; z-index: 1000;
-            resize: horizontal; min-width: 40px; box-sizing: border-box;
-        }
+    /* =====================================================================
+       自定义颜色浮动列
+    ===================================================================== */
+    #colorPanel {
+        position: fixed; right: 64px; top: calc(50% + 85px); z-index: 1001;
+        transition: transform 0.45s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .custom-color-col {
+        display: flex; flex-direction: column; align-items: center; gap: 7px;
+        min-width: 34px; padding: 8px 0;
+        background: var(--mica-base);
+        backdrop-filter: blur(40px) saturate(180%);
+        -webkit-backdrop-filter: blur(40px) saturate(180%);
+        border: 1px solid var(--mica-border); border-radius: 12px;
+        box-shadow: var(--shadow-flyout);
+    }
+    .custom-color-col .color-dot { width: 18px; height: 18px; border-radius: 5px; }
+    #customColorPalette { display: flex; flex-direction: column; gap: 5px; align-items: center; }
+    .mini-btn {
+        width: 22px; height: 22px;
+        border: 1px solid var(--mica-border); background: var(--surface-card);
+        border-radius: 5px; cursor: pointer; padding: 0;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 13px; color: var(--text-primary);
+        transition: background 0.1s;
+    }
+    .mini-btn:hover { background: var(--surface-hover); }
 
-        .hint { position: fixed; bottom: 15px; left: 15px; color: #888; font-size: 12px; pointer-events: none; }
+    /* =====================================================================
+       文字输入浮层
+    ===================================================================== */
+    #text-input {
+        position: fixed; display: none; z-index: 1000;
+        background: transparent; border: 1px dashed #666; outline: none;
+        padding: 2px 4px; margin: 0; line-height: 1.2; overflow: hidden;
+        white-space: pre-wrap; word-break: break-all;
+        font-family: Arial; resize: horizontal; min-width: 40px; box-sizing: border-box;
+    }
 
-        /* 工具栏隐藏提示 */
-        #toolbar-hidden-hint {
-            position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%);
-            color: rgba(255,255,255,0.38); font-size: 11px;
-            pointer-events: none; display: none;
-            letter-spacing: 0.04em;
-            white-space: nowrap;
-        }
+    /* =====================================================================
+       橡皮擦自定义光标
+    ===================================================================== */
+    #eraser-cursor {
+        position: fixed; z-index: 9999;
+        border-radius: 50%; background: transparent; border: 1px solid white;
+        mix-blend-mode: difference; pointer-events: none; display: none;
+        transform: translate(-50%, -50%);
+    }
 
-        /* 工具栏滑动过渡（仅 transform，无 opacity） */
-        .toolbar-group {
-            transition: transform 0.45s cubic-bezier(0.4, 0, 0.2, 1);
-        }
-        .toolbar-group.hidden {
-            transform: translateX(calc(100% + 16px));
-            pointer-events: none;
-        }
+    /* =====================================================================
+       裁剪工具
+    ===================================================================== */
+    #crop-overlay {
+        position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+        pointer-events: none; z-index: 500;
+    }
+    #crop-confirm-bar {
+        position: fixed; bottom: 50px; left: 50%; transform: translateX(-50%);
+        display: none; gap: 10px; z-index: 1500; align-items: center;
+        background: var(--mica-base);
+        backdrop-filter: blur(40px) saturate(180%);
+        -webkit-backdrop-filter: blur(40px) saturate(180%);
+        border: 1px solid var(--mica-border); border-radius: 12px;
+        padding: 8px 16px; box-shadow: var(--shadow-flyout);
+    }
+    #crop-confirm-bar.show { display: flex; }
+    .crop-action-btn {
+        padding: 6px 16px; border: none; border-radius: 6px; cursor: pointer;
+        font-size: 13px; font-weight: 500;
+        transition: background 0.1s, transform 0.08s;
+    }
+    .crop-action-btn:active { transform: scale(0.96); }
+    .crop-action-btn.confirm { background: rgba(96,205,255,0.2);  color: #99e0ff; border: 1px solid rgba(96,205,255,0.3); }
+    .crop-action-btn.confirm:hover { background: rgba(96,205,255,0.3); }
+    .crop-action-btn.cancel  { background: rgba(255,100,80,0.15); color: #ff9a8e; border: 1px solid rgba(255,100,80,0.25); }
+    .crop-action-btn.cancel:hover  { background: rgba(255,100,80,0.25); }
+    .crop-size-label { color: #ccc; font-size: 12px; min-width: 100px; text-align: center; }
 
+    /* =====================================================================
+       滑块面板 / 颜色列 — 随工具栏一起隐藏
+    ===================================================================== */
+    #sliderPanel.hidden,
+    #colorPanel.hidden {
+        transform: translateY(0) translateX(200px);
+        pointer-events: none;
+    }
+    /* sliderPanel 默认带 translateY(-50%)，hidden 时叠加 X 偏移 */
+    #sliderPanel.hidden { transform: translateY(-50%) translateX(200px); }
 
-
-        /* 橡皮擦反色光标 */
-        #eraser-cursor {
-            position: fixed; border-radius: 50%; background: transparent;
-            border: 1px solid white;
-            mix-blend-mode: difference; pointer-events: none; display: none;
-            transform: translate(-50%, -50%); z-index: 9999;
-        }
-
-        /* 裁剪工具 */
-        #crop-overlay {
-            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
-            pointer-events: none; z-index: 500;
-        }
-        #crop-confirm-bar {
-            position: fixed; bottom: 50px; left: 50%; transform: translateX(-50%);
-            display: none; gap: 10px; z-index: 1500;
-            background: var(--mica-base);
-            backdrop-filter: blur(40px) saturate(180%);
-            -webkit-backdrop-filter: blur(40px) saturate(180%);
-            border-radius: 12px; padding: 8px 16px; align-items: center;
-            box-shadow: var(--shadow-flyout);
-            border: 1px solid var(--mica-border);
-        }
-        #crop-confirm-bar.show { display: flex; }
-        .crop-action-btn {
-            padding: 6px 16px; border: none; border-radius: 6px; cursor: pointer;
-            font-size: 13px; font-weight: 500; transition: background 0.1s, transform 0.08s;
-        }
-        .crop-action-btn:active { transform: scale(0.96); }
-        .crop-action-btn.confirm { background: rgba(96,205,255,0.2); color: #99e0ff; border: 1px solid rgba(96,205,255,0.3); }
-        .crop-action-btn.confirm:hover { background: rgba(96,205,255,0.3); }
-        .crop-action-btn.cancel  { background: rgba(255,100,80,0.15); color: #ff9a8e; border: 1px solid rgba(255,100,80,0.25); }
-        .crop-action-btn.cancel:hover { background: rgba(255,100,80,0.25); }
-        .crop-size-label { color: #ccc; font-size: 12px; min-width: 100px; text-align: center; }
-    </style>
+    /* =====================================================================
+       工具栏隐藏提示
+    ===================================================================== */
+    #toolbar-hidden-hint {
+        position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%);
+        display: none; pointer-events: none;
+        color: rgba(255,255,255,0.38); font-size: 11px;
+        letter-spacing: 0.04em; white-space: nowrap;
+    }
+</style>
 </head>
 <body>
 
-<div id="viewport"><canvas id="bg"></canvas><canvas id="drawing"></canvas></div>
+<!-- =========================================================
+     画布层
+========================================================= -->
+<div id="viewport">
+    <canvas id="bg"></canvas>
+    <canvas id="drawing"></canvas>
+</div>
 
+<!-- =========================================================
+     裁剪工具覆盖层 + 确认栏
+========================================================= -->
 <canvas id="crop-overlay"></canvas>
 <div id="crop-confirm-bar">
     <span class="crop-size-label" id="crop-size-label">0 × 0</span>
@@ -261,83 +291,129 @@
     <button class="crop-action-btn cancel"  onclick="cancelCrop()">✘ 取消</button>
 </div>
 
+<!-- =========================================================
+     文字输入浮层
+========================================================= -->
 <textarea id="text-input" onmousedown="event.stopPropagation()" rows="1"></textarea>
 
-    <!-- 滑动条面板：独立，固定在右侧，垂直居中 -->
-    <div id="sliderPanel" style="position:fixed;right:64px;top:50%;transform:translateY(-50%);z-index:1000;pointer-events:auto;transition:transform 0.45s cubic-bezier(0.4,0,0.2,1);" onmousedown="event.stopPropagation()">
-        <div style="position:relative;display:flex;flex-direction:column;align-items:center;gap:6px;">
-            <div id="size-preview" style="position:absolute;right:calc(100% + 8px);top:50%;transform:translateY(-50%);"><div id="size-preview-dot"></div></div>
-            <div class="slider-container">
-                <input type="range" id="lineWidth" class="vertical" min="1" max="30" value="3" orient="vertical">
-            </div>
-        </div>
+<!-- =========================================================
+     笔触粗细滑块（右侧垂直居中，独立于工具栏）
+========================================================= -->
+<div id="sliderPanel" onmousedown="event.stopPropagation()">
+    <div id="size-preview"><div id="size-preview-dot"></div></div>
+    <div class="slider-container">
+        <input type="range" id="lineWidth" class="vertical" min="1" max="30" value="3" orient="vertical">
     </div>
-    <!-- 自定义颜色面板：独立，顶部与滑动条底部对齐（50% + 85px = 滑动条组合底边）加 8px 间距 -->
-    <div id="colorPanel" style="position:fixed;right:64px;top:calc(50% + 85px);z-index:1001;pointer-events:auto;transition:transform 0.45s cubic-bezier(0.4,0,0.2,1);" onmousedown="event.stopPropagation()">
-        <div class="custom-color-col">
-            <button class="mini-btn" onclick="addCustomColor()" title="添加颜色" style="width:20px;height:20px;font-size:14px;">+</button>
-            <div id="customColorPalette" style="display:flex;flex-direction:column;gap:5px;align-items:center;"></div>
-        </div>
-    </div>
+</div>
 
+<!-- =========================================================
+     自定义颜色浮动列（滑块正下方）
+========================================================= -->
+<div id="colorPanel" onmousedown="event.stopPropagation()">
+    <div class="custom-color-col">
+        <button class="mini-btn" onclick="addCustomColor()" title="添加颜色">+</button>
+        <div id="customColorPalette"></div>
+    </div>
+</div>
+
+<!-- =========================================================
+     主工具栏（右侧停靠）
+========================================================= -->
 <div class="toolbar-group" onmousedown="event.stopPropagation()">
-
     <div class="toolbar">
-        <!-- 组1：新建 复制 保存 -->
-        <button class="tool-btn" onclick="newCanvas()" title="新建画布">📄</button>
-        <button class="tool-btn" onclick="copyToClipboard()" title="复制到剪贴板 (Ctrl+C)" id="copyBtn">📋</button>
-        <button class="tool-btn" onclick="saveImage()" title="保存" style=" color:#99e0ff;">💾</button>
+
+        <!-- 文件操作 -->
+        <button class="tool-btn" onclick="newCanvas()"        title="新建画布">📄</button>
+        <button class="tool-btn" onclick="copyToClipboard()"  title="复制到剪贴板 (Ctrl+C)" id="copyBtn">📋</button>
+        <button class="tool-btn" onclick="saveImage()"        title="保存" style="color:#99e0ff;">💾</button>
 
         <div class="toolbar-divider"></div>
 
-        <!-- 组2：方框 箭头 直线 文字 -->
+        <!-- 绘制工具：形状 / 箭头 / 直线 / 文字 -->
         <div class="tool-group">
-            <button class="tool-btn active" id="shapeBtn" onclick="setTool(currentShape, this)" oncontextmenu="toggleShapeMenu(event)">▢</button>
+            <button class="tool-btn active" id="shapeBtn"
+                onclick="setTool(currentShape, this)"
+                oncontextmenu="toggleShapeMenu(event)"
+                title="形状（右键选类型）">▢</button>
         </div>
         <button class="tool-btn" onclick="setTool('arrow', this)" title="箭头">➔</button>
-        <!-- 直线工具 -->
         <div class="tool-group">
-            <button class="tool-btn" id="lineBtn" onclick="setTool(currentLineStyle, this)" oncontextmenu="toggleLineMenu(event)" title="直线（右键选样式）">—</button>
+            <button class="tool-btn" id="lineBtn"
+                onclick="setTool(currentLineStyle, this)"
+                oncontextmenu="toggleLineMenu(event)"
+                title="直线（右键选样式）">—</button>
         </div>
         <button class="tool-btn" onclick="setTool('text', this)" title="文字" style="font-size:15px;font-weight:bold;">T</button>
 
         <div class="toolbar-divider"></div>
 
-        <!-- 组3：画笔 橡皮 印章 -->
+        <!-- 绘制工具：画笔 / 橡皮擦 / 印章 -->
         <button class="tool-btn" onclick="setTool('pen', this)" title="画笔">✏</button>
-        <!-- 橡皮擦工具 -->
+        <button class="tool-btn" id="eraserBtn" onclick="setTool('eraser-circle', this)" title="橡皮擦">⛫</button>
         <div class="tool-group">
-            <button class="tool-btn" id="eraserBtn" onclick="setTool('eraser-circle', this)" title="橡皮擦">⛫</button>
-        </div>
-        <!-- 印章工具 -->
-        <div class="tool-group">
-            <button class="tool-btn" id="stampBtn" onclick="setTool(currentStamp, this)" oncontextmenu="toggleStampMenu(event)" title="印章（右键选图案）">✔</button>
+            <button class="tool-btn" id="stampBtn"
+                onclick="setTool(currentStamp, this)"
+                oncontextmenu="toggleStampMenu(event)"
+                title="印章（右键选图案）">✔</button>
         </div>
 
         <div class="toolbar-divider"></div>
 
-        <!-- 组4：颜色（不变） -->
+        <!-- 颜色 -->
         <div class="color-label">基础颜色</div>
         <div class="color-panel" id="basicColorPalette"></div>
-        
         <div class="color-picker-row">
             <input type="color" id="customColor" value="#ff0000" title="选择颜色">
         </div>
 
         <div class="toolbar-divider"></div>
 
-        <!-- 组5：旋转 裁剪 -->
-        <button class="tool-btn" onclick="rotateCanvas()" title="顺时针旋转 90°">↻</button>
+        <!-- 变换 -->
+        <button class="tool-btn" onclick="rotateCanvas()"     title="顺时针旋转 90°">↻</button>
         <button class="tool-btn" id="cropBtn" onclick="setTool('crop', this)" title="裁剪图像">✂</button>
 
         <div class="toolbar-divider"></div>
 
-        <!-- 组6：撤销 -->
+        <!-- 历史 -->
         <button class="tool-btn" onclick="undo()" title="撤销 (Ctrl+Z)">↩︎</button>
 
     </div>
+
+    <!-- 二级菜单（紧邻工具栏，挂在 toolbar-group 内） -->
+    <div class="sub-menu" id="shapeSubMenu">
+        <div class="sub-menu-row">
+            <button class="tool-btn" onclick="selectShape('rect', '▢')"           title="矩形">▢</button>
+            <button class="tool-btn" onclick="selectShape('circle', '◯')"          title="椭圆">◯</button>
+            <button class="tool-btn" onclick="selectShape('triangle', '△')"        title="三角形">△</button>
+        </div>
+        <div class="sub-menu-divider"></div>
+        <div class="sub-menu-row">
+            <button class="tool-btn" onclick="selectShape('rect-fill', '◼︎')"      title="填充矩形"   style="font-size:18px;">◼︎</button>
+            <button class="tool-btn" onclick="selectShape('circle-fill', '⚫︎')"   title="填充椭圆"   style="font-size:18px;">⚫︎</button>
+            <button class="tool-btn" onclick="selectShape('triangle-fill', '▲')"   title="填充三角形" style="font-size:18px;">▲</button>
+        </div>
+    </div>
+
+    <div class="sub-menu" id="lineSubMenu">
+        <div class="sub-menu-row">
+            <button class="tool-btn" onclick="selectLineStyle('line-solid', '—')"       title="实线"   style="font-size:18px;font-weight:bold;">—</button>
+            <button class="tool-btn" onclick="selectLineStyle('line-short-dash', '╌')"  title="短虚线">╌</button>
+            <button class="tool-btn" onclick="selectLineStyle('line-long-dash', '╍')"   title="长虚线">╍</button>
+            <button class="tool-btn" onclick="selectLineStyle('line-wave', '〜')"        title="波浪线">〜</button>
+        </div>
+    </div>
+
+    <div class="sub-menu" id="stampSubMenu">
+        <div class="sub-menu-row">
+            <button class="tool-btn" onclick="selectStamp('stamp-check', '✔')"    title="打勾"   style="font-size:18px;color:#28a745;">✔</button>
+            <button class="tool-btn" onclick="selectStamp('stamp-star', '★')"     title="星星"   style="font-size:18px;color:#f0a500;">★</button>
+            <button class="tool-btn" onclick="selectStamp('stamp-triangle', '▲')" title="三角形" style="font-size:18px;">▲</button>
+            <button class="tool-btn" onclick="selectStamp('stamp-heart', '♥')"    title="心形"   style="font-size:18px;color:#ff4d6d;">♥</button>
+        </div>
+    </div>
 </div>
 
+<!-- 橡皮擦自定义光标 -->
 <div id="eraser-cursor"></div>
 
 <!-- 工具栏隐藏提示 -->
@@ -377,10 +453,23 @@
         eraserCursorEl.style.display = 'none';
     }
 
+    // 工具集合常量，避免各处重复硬编码
+    const SHAPE_TOOLS = ['rect', 'circle', 'triangle', 'rect-fill', 'circle-fill', 'triangle-fill'];
+    const LINE_TOOLS  = ['line-solid', 'line-short-dash', 'line-long-dash', 'line-wave'];
+
+    // 印章配置表：新增印章只需在此加一行，无需修改任何绘制逻辑
+    const STAMP_MAP = {
+        'stamp-check':    '✔',
+        'stamp-star':     '★',
+        'stamp-triangle': '▲',
+        'stamp-heart':    '♥',
+    };
+    const STAMP_TOOLS = Object.keys(STAMP_MAP);
+
     let tool = 'rect', isDrawing = false, isPanning = false;
-    let currentShape = 'rect'; // 当前选中的形状工具
-    let currentLineStyle = 'line-solid'; // 当前直线样式
-    let currentStamp = 'stamp-check'; // 当前印章图案
+    let currentShape = 'rect';
+    let currentLineStyle = 'line-solid';
+    let currentStamp = 'stamp-check';
     let startX, startY, scale = 1, scrollX = 0, scrollY = 0;
     let snapshot;
     let lastPos = {x: 0, y: 0};
@@ -438,7 +527,7 @@
     // 粗细预览逻辑
     lineWidthInput.oninput = (e) => {
         e.stopPropagation();
-        sizePreview.style.display = 'flex';
+        sizePreview.classList.add('show');
         const val = lineWidthInput.value;
         sizeDot.style.width = val + 'px';
         sizeDot.style.height = val + 'px';
@@ -447,10 +536,10 @@
     };
     lineWidthInput.onmouseup = () => {
         setTimeout(() => {
-            sizePreview.style.display = 'none';
+            sizePreview.classList.remove('show');
         }, 500);
     };
-    lineWidthInput.onchange = () => sizePreview.style.display = 'none';
+    lineWidthInput.onchange = () => sizePreview.classList.remove('show');
 
     function initCanvas(w, h) {
         bg.width = w; bg.height = h;
@@ -599,39 +688,16 @@
             return;
         }
 
-        // 印章工具：点击即印，不需要拖拽
-        if (tool === 'stamp-check' || tool === 'stamp-star') {
+        // 印章工具：查表取字符，用 fillText 统一渲染，居中对齐点击位置
+        if (STAMP_TOOLS.includes(tool)) {
             saveState();
-            ctx.fillStyle = currentColor;
-            ctx.strokeStyle = currentColor;
             const size = parseInt(lineWidthInput.value) * 6;
             ctx.save();
-            ctx.translate(pos.x, pos.y);
-            if (tool === 'stamp-check') {
-                // 绘制打勾
-                const s = size * 0.45;
-                ctx.lineWidth = size * 0.15;
-                ctx.lineCap = 'round';
-                ctx.lineJoin = 'round';
-                ctx.beginPath();
-                ctx.moveTo(-s, 0);
-                ctx.lineTo(-s * 0.15, s * 0.7);
-                ctx.lineTo(s, -s * 0.6);
-                ctx.stroke();
-            } else if (tool === 'stamp-star') {
-                // 绘制五角星
-                const outerR = size * 0.5;
-                const innerR = outerR * 0.4;
-                ctx.beginPath();
-                for (let i = 0; i < 10; i++) {
-                    const angle = (i * Math.PI / 5) - Math.PI / 2;
-                    const r = i % 2 === 0 ? outerR : innerR;
-                    if (i === 0) ctx.moveTo(Math.cos(angle) * r, Math.sin(angle) * r);
-                    else ctx.lineTo(Math.cos(angle) * r, Math.sin(angle) * r);
-                }
-                ctx.closePath();
-                ctx.fill();
-            }
+            ctx.fillStyle = currentColor;
+            ctx.font = `${size}px Arial`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(STAMP_MAP[tool], pos.x, pos.y);
             ctx.restore();
             saveState();
             return;
@@ -642,15 +708,10 @@
         ctx.fillStyle = currentColor;
         ctx.lineWidth = lineWidthInput.value;
         ctx.lineJoin = 'round'; ctx.lineCap = 'round';
-        if (tool !== 'pen') snapshot = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        if(tool === 'pen') { 
-            snapshot = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        snapshot = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        if (tool === 'pen') {
             prevPos = { x: startX, y: startY };
-            ctx.beginPath(); ctx.moveTo(startX, startY); 
-        }
-        // 直线工具初始化
-        if (['line-solid', 'line-short-dash', 'line-long-dash', 'line-wave'].includes(tool)) {
-            snapshot = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            ctx.beginPath(); ctx.moveTo(startX, startY);
         }
         // 橡皮擦工具初始化（destination-out 真正擦除批注层）
         if (tool === 'eraser-circle') {
@@ -839,7 +900,7 @@
             } else if (tool === 'arrow') {
                 if (e.ctrlKey) drawArrow(startX, startY, pos.x, pos.y);
                 else drawArrow(pos.x, pos.y, startX, startY);
-            } else if (['line-solid', 'line-short-dash', 'line-long-dash', 'line-wave'].includes(tool)) {
+            } else if (LINE_TOOLS.includes(tool)) {
                 // Shift 键锁定水平 / 垂直方向
                 let ex = pos.x, ey = pos.y;
                 if (e.shiftKey) {
@@ -930,25 +991,21 @@
         saveState();
         const newW = canvas.height, newH = canvas.width;
 
-        // 旋转背景层
-        const tempBg = document.createElement('canvas');
-        tempBg.width = newW; tempBg.height = newH;
-        const tbCtx = tempBg.getContext('2d');
-        tbCtx.translate(newW / 2, newH / 2);
-        tbCtx.rotate(Math.PI / 2);
-        tbCtx.drawImage(bg, -bg.width / 2, -bg.height / 2);
+        function rotateLayer(src) {
+            const tmp = document.createElement('canvas');
+            tmp.width = newW; tmp.height = newH;
+            const tCtx = tmp.getContext('2d');
+            tCtx.translate(newW / 2, newH / 2);
+            tCtx.rotate(Math.PI / 2);
+            tCtx.drawImage(src, -src.width / 2, -src.height / 2);
+            return tmp;
+        }
 
-        // 旋转批注层
-        const tempDraw = document.createElement('canvas');
-        tempDraw.width = newW; tempDraw.height = newH;
-        const tdCtx = tempDraw.getContext('2d');
-        tdCtx.translate(newW / 2, newH / 2);
-        tdCtx.rotate(Math.PI / 2);
-        tdCtx.drawImage(canvas, -canvas.width / 2, -canvas.height / 2);
+        const tempBg   = rotateLayer(bg);
+        const tempDraw = rotateLayer(canvas);
 
         bg.width = newW; bg.height = newH;
         canvas.width = newW; canvas.height = newH;
-
         bgCtx.drawImage(tempBg, 0, 0);
         ctx.drawImage(tempDraw, 0, 0);
 
@@ -996,62 +1053,44 @@
         ctx.stroke();
     }
 
+    // 图片加载公共函数（拖拽/粘贴共用）
+    function loadImageToCanvas(img) {
+        const w = img.width, h = img.height;
+        bg.width = w; bg.height = h;
+        canvas.width = w; canvas.height = h;
+        const margin = 60;
+        scale = Math.min((window.innerWidth - margin) / w, (window.innerHeight - margin) / h);
+        if (scale > 1) scale = 1;
+        scrollX = (window.innerWidth - w * scale) / 2;
+        scrollY = (window.innerHeight - h * scale) / 2;
+        bgCtx.drawImage(img, 0, 0, w, h);
+        ctx.clearRect(0, 0, w, h);
+        history = [];
+        saveState();
+        updateTransform();
+    }
+
+    function readFileAsImage(file) {
+        if (!file || !file.type.startsWith('image/')) return;
+        const reader = new FileReader();
+        reader.onload = ev => {
+            const img = new Image();
+            img.onload = () => loadImageToCanvas(img);
+            img.src = ev.target.result;
+        };
+        reader.readAsDataURL(file);
+    }
+
     // 拖拽图片导入
     window.addEventListener('dragover', e => e.preventDefault());
     window.addEventListener('drop', e => {
         e.preventDefault();
-        const file = e.dataTransfer.files[0];
-        if (file && file.type.startsWith('image/')) {
-            const reader = new FileReader();
-            reader.onload = (ev) => {
-                const img = new Image();
-                img.onload = () => {
-                    const w = img.width, h = img.height;
-                    bg.width = w; bg.height = h;
-                    canvas.width = w; canvas.height = h;
-                    const margin = 60;
-                    scale = Math.min((window.innerWidth - margin) / w, (window.innerHeight - margin) / h);
-                    if (scale > 1) scale = 1;
-                    scrollX = (window.innerWidth - w * scale) / 2;
-                    scrollY = (window.innerHeight - h * scale) / 2;
-                    bgCtx.drawImage(img, 0, 0, w, h);
-                    ctx.clearRect(0, 0, w, h);
-                    history = [];
-                    saveState();
-                    updateTransform();
-                };
-                img.src = ev.target.result;
-            };
-            reader.readAsDataURL(file);
-        }
+        readFileAsImage(e.dataTransfer.files[0]);
     });
 
     // 粘贴图片导入
     window.addEventListener('paste', e => {
-        const file = e.clipboardData.files[0];
-        if (file) {
-            const reader = new FileReader();
-            reader.onload = (ev) => {
-                const img = new Image();
-                img.onload = () => {
-                    const w = img.width, h = img.height;
-                    bg.width = w; bg.height = h;
-                    canvas.width = w; canvas.height = h;
-                    const margin = 60;
-                    scale = Math.min((window.innerWidth - margin) / w, (window.innerHeight - margin) / h);
-                    if (scale > 1) scale = 1;
-                    scrollX = (window.innerWidth - w * scale) / 2;
-                    scrollY = (window.innerHeight - h * scale) / 2;
-                    bgCtx.drawImage(img, 0, 0, w, h);
-                    ctx.clearRect(0, 0, w, h);
-                    history = [];
-                    saveState();
-                    updateTransform();
-                };
-                img.src = ev.target.result;
-            };
-            reader.readAsDataURL(file);
-        }
+        readFileAsImage(e.clipboardData.files[0]);
     });
 
     function openMenu(menuId, btnRect) {
@@ -1085,57 +1124,36 @@
         }, 100);
     }
 
-    function toggleShapeMenu(e) {
+    function toggleSubMenu(e, menuId) {
         e.preventDefault();
-        openMenu('shapeSubMenu', e.currentTarget.getBoundingClientRect());
+        openMenu(menuId, e.currentTarget.getBoundingClientRect());
     }
+    function toggleShapeMenu(e) { toggleSubMenu(e, 'shapeSubMenu'); }
+    function toggleLineMenu(e)  { toggleSubMenu(e, 'lineSubMenu'); }
+    function toggleStampMenu(e) { toggleSubMenu(e, 'stampSubMenu'); }
 
-    function selectShape(shape, icon) {
-        currentShape = shape;
-        const btn = document.getElementById('shapeBtn');
+    function selectSubTool(menuId, btnId, stateKey, value, icon) {
+        if (stateKey === 'shape') currentShape = value;
+        else if (stateKey === 'line') currentLineStyle = value;
+        else if (stateKey === 'stamp') currentStamp = value;
+        const btn = document.getElementById(btnId);
         btn.innerText = icon;
-        setTool(shape, btn);
-        document.getElementById('shapeSubMenu').classList.remove('show');
+        setTool(value, btn);
+        document.getElementById(menuId).classList.remove('show');
         event.stopPropagation();
     }
-
-    function toggleLineMenu(e) {
-        e.preventDefault();
-        openMenu('lineSubMenu', e.currentTarget.getBoundingClientRect());
-    }
-
-    function selectLineStyle(style, icon) {
-        currentLineStyle = style;
-        const btn = document.getElementById('lineBtn');
-        btn.innerText = icon;
-        setTool(style, btn);
-        document.getElementById('lineSubMenu').classList.remove('show');
-        event.stopPropagation();
-    }
-
-    function toggleStampMenu(e) {
-        e.preventDefault();
-        openMenu('stampSubMenu', e.currentTarget.getBoundingClientRect());
-    }
-
-    function selectStamp(stamp, icon) {
-        currentStamp = stamp;
-        const btn = document.getElementById('stampBtn');
-        btn.innerText = icon;
-        setTool(stamp, btn);
-        document.getElementById('stampSubMenu').classList.remove('show');
-        event.stopPropagation();
-    }
+    function selectShape(shape, icon) { selectSubTool('shapeSubMenu', 'shapeBtn', 'shape', shape, icon); }
+    function selectLineStyle(style, icon) { selectSubTool('lineSubMenu', 'lineBtn', 'line', style, icon); }
+    function selectStamp(stamp, icon) { selectSubTool('stampSubMenu', 'stampBtn', 'stamp', stamp, icon); }
 
     function setTool(t, btn) {
         tool = t;
         document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
-        // 如果是形状工具，保持主按钮高亮
-        if (['rect', 'circle', 'triangle', 'rect-fill', 'circle-fill', 'triangle-fill'].includes(t)) {
+        if (SHAPE_TOOLS.includes(t)) {
             document.getElementById('shapeBtn').classList.add('active');
-        } else if (['line-solid', 'line-short-dash', 'line-long-dash', 'line-wave'].includes(t)) {
+        } else if (LINE_TOOLS.includes(t)) {
             document.getElementById('lineBtn').classList.add('active');
-        } else if (['stamp-check', 'stamp-star'].includes(t)) {
+        } else if (STAMP_TOOLS.includes(t)) {
             document.getElementById('stampBtn').classList.add('active');
         } else if (t === 'eraser-circle') {
             document.getElementById('eraserBtn').classList.add('active');
@@ -1146,7 +1164,6 @@
         } else {
             btn.classList.add('active');
         }
-        // 非橡皮擦工具时恢复光标
         if (t !== 'eraser-circle') {
             hideEraserCursor();
             if (t !== 'crop') cancelCrop();
@@ -1276,17 +1293,15 @@
             const hint         = document.getElementById('toolbar-hidden-hint');
             const isHidden = toolbarGroup.classList.toggle('hidden');
             // 滑动条保留原有 translateY(-50%)，追加 translateX 偏移
-            sliderPanel.style.transform = isHidden ? 'translateY(-50%) translateX(200px)' : 'translateY(-50%)';
-            sliderPanel.style.pointerEvents = isHidden ? 'none' : 'auto';
-            colorPanel.style.transform  = isHidden ? 'translateX(200px)' : '';
-            colorPanel.style.pointerEvents = isHidden ? 'none' : 'auto';
+            sliderPanel.classList.toggle('hidden', isHidden);
+            colorPanel.classList.toggle('hidden', isHidden);
             hint.style.display = isHidden ? 'block' : 'none';
         }
         
         // 实时响应 Ctrl (箭头反转) 和 Shift (正形状/直线)
         if (isDrawing) {
             if ((tool === 'arrow' && e.key === 'Control') || 
-                (['rect', 'circle', 'triangle', 'rect-fill', 'circle-fill', 'triangle-fill'].includes(tool) && e.key === 'Shift') ||
+                (SHAPE_TOOLS.includes(tool) && e.key === 'Shift') ||
                 (tool === 'pen' && e.key === 'Shift') ||
                 (tool === 'eraser-circle' && e.key === 'Shift')) {
                 // 触发一次 mousemove 来更新绘图
@@ -1305,7 +1320,7 @@
     window.onkeyup = e => {
         if (isDrawing) {
             if ((tool === 'arrow' && e.key === 'Control') || 
-                (['rect', 'circle', 'triangle', 'rect-fill', 'circle-fill', 'triangle-fill'].includes(tool) && e.key === 'Shift')) {
+                (SHAPE_TOOLS.includes(tool) && e.key === 'Shift')) {
                 const ev = new MouseEvent('mousemove', {
                     clientX: lastPos.x * scale + scrollX, 
                     clientY: lastPos.y * scale + scrollY,
@@ -1362,34 +1377,6 @@
     });
     viewport.addEventListener('mousedown', e => { if (e.button === 1) e.preventDefault(); });
 </script>
-<!-- 二级菜单（挂载在 body 上，避免 stacking context 问题） -->
-<div class="sub-menu" id="shapeSubMenu">
-    <div class="sub-menu-row">
-        <button class="tool-btn" onclick="selectShape('rect', '☐')">▢</button>
-        <button class="tool-btn" onclick="selectShape('circle', '◯')">◯</button>
-        <button class="tool-btn" onclick="selectShape('triangle', '△')">△</button>
-    </div>
-    <div class="sub-menu-divider"></div>
-    <div class="sub-menu-row">
-        <button class="tool-btn" onclick="selectShape('rect-fill', '◼︎')" style="font-size:18px;">◼︎</button>
-        <button class="tool-btn" onclick="selectShape('circle-fill', '⚫︎')" style="font-size:18px;">⚫︎</button>
-        <button class="tool-btn" onclick="selectShape('triangle-fill', '▲')" style="font-size:18px;">▲</button>
-    </div>
-</div>
-<div class="sub-menu" id="lineSubMenu">
-    <div class="sub-menu-row">
-        <button class="tool-btn" onclick="selectLineStyle('line-solid', '—')" title="实直线" style="font-size:18px;font-weight:bold;">—</button>
-        <button class="tool-btn" onclick="selectLineStyle('line-short-dash', '╌')" title="短虚线">╌</button>
-        <button class="tool-btn" onclick="selectLineStyle('line-long-dash', '╍')" title="长虚线">╍</button>
-        <button class="tool-btn" onclick="selectLineStyle('line-wave', '〜')" title="波浪线">〜</button>
-    </div>
-</div>
-<div class="sub-menu" id="stampSubMenu">
-    <div class="sub-menu-row">
-        <button class="tool-btn" onclick="selectStamp('stamp-check', '✔')" title="打勾" style="font-size:18px;color:#28a745;">✔</button>
-        <button class="tool-btn" onclick="selectStamp('stamp-star', '★')" title="星星" style="font-size:18px;color:#f0a500;">★</button>
-    </div>
-</div>
 
 </body>
 </html>
