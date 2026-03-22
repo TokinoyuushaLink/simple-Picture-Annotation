@@ -344,6 +344,7 @@
                 title="直线（右键选样式）">—</button>
         </div>
         <button class="tool-btn" onclick="setTool('text', this)" title="文字" style="font-size:15px;font-weight:bold;">T</button>
+        <button class="tool-btn" id="tableBtn" onclick="activateTableTool(this)" title="表格（点击设置行列数）">⊞</button>
 
         <div class="toolbar-divider"></div>
 
@@ -456,6 +457,9 @@
     // 工具集合常量，避免各处重复硬编码
     const SHAPE_TOOLS = ['rect', 'circle', 'triangle', 'rect-fill', 'circle-fill', 'triangle-fill'];
     const LINE_TOOLS  = ['line-solid', 'line-short-dash', 'line-long-dash', 'line-wave'];
+
+    // 表格工具状态
+    let tableRows = 3, tableCols = 3;
 
     // 印章配置表：新增印章只需在此加一行，无需修改任何绘制逻辑
     const STAMP_MAP = {
@@ -874,6 +878,8 @@
                 ctx.strokeRect(startX, startY, w, h);
             } else if (tool === 'rect-fill') {
                 ctx.fillRect(startX, startY, w, h);
+            } else if (tool === 'table') {
+                drawTablePreview(startX, startY, w, h);
             } else if (tool === 'circle') {
                 ctx.beginPath();
                 ctx.ellipse(startX + w/2, startY + h/2, Math.abs(w/2), Math.abs(h/2), 0, 0, 2 * Math.PI);
@@ -1051,7 +1057,43 @@
         ctx.stroke();
     }
 
-    // 图片加载公共函数（拖拽/粘贴共用）
+    function drawTablePreview(sx, sy, w, h) {
+        const rows = tableRows;
+        const cols = tableCols;
+        ctx.beginPath();
+        // 外框
+        ctx.strokeRect(sx, sy, w, h);
+        // 列分隔线
+        for (let c = 1; c < cols; c++) {
+            const x = sx + w * c / cols;
+            ctx.moveTo(x, sy);
+            ctx.lineTo(x, sy + h);
+        }
+        // 行分隔线
+        for (let r = 1; r < rows; r++) {
+            const y = sy + h * r / rows;
+            ctx.moveTo(sx, y);
+            ctx.lineTo(sx + w, y);
+        }
+        ctx.stroke();
+    }
+
+    // 激活表格工具（分两次提示行、列数）
+    function activateTableTool(btn) {
+        const rStr = prompt('请输入表格行数（0 表示无横向分隔线）：', `${tableRows}`);
+        if (rStr === null) return;
+        const r = parseInt(rStr);
+        if (isNaN(r) || r < 0) { alert('请输入有效的非负整数！'); return; }
+
+        const cStr = prompt('请输入表格列数（0 表示无纵向分隔线）：', `${tableCols}`);
+        if (cStr === null) return;
+        const c = parseInt(cStr);
+        if (isNaN(c) || c < 0) { alert('请输入有效的非负整数！'); return; }
+
+        tableRows = r;
+        tableCols = c;
+        setTool('table', btn);
+    }
     function loadImageToCanvas(img) {
         const w = img.width, h = img.height;
         bg.width = w; bg.height = h;
@@ -1153,6 +1195,8 @@
             document.getElementById('lineBtn').classList.add('active');
         } else if (STAMP_TOOLS.includes(t)) {
             document.getElementById('stampBtn').classList.add('active');
+        } else if (t === 'table') {
+            document.getElementById('tableBtn').classList.add('active');
         } else if (t === 'eraser-circle') {
             document.getElementById('eraserBtn').classList.add('active');
             showEraserCursor();
@@ -1281,6 +1325,12 @@
     window.onkeydown = e => { 
         if(e.ctrlKey && e.key === 'z') undo();
         if(e.ctrlKey && e.key === 'c' && document.activeElement !== textInput) copyToClipboard();
+
+        // Enter 确认裁剪
+        if (e.key === 'Enter' && tool === 'crop' && document.getElementById('crop-confirm-bar').classList.contains('show')) {
+            e.preventDefault();
+            confirmCrop();
+        }
 
         // Tab 键切换工具栏显示/隐藏
         if (e.key === 'Tab') {
