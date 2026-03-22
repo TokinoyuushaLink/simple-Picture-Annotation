@@ -903,7 +903,7 @@
                 ctx.closePath();
                 ctx.fill();
             } else if (tool === 'arrow') {
-                if (e.ctrlKey) drawArrow(startX, startY, pos.x, pos.y);
+                if (e.shiftKey) drawArrow(startX, startY, pos.x, pos.y);
                 else drawArrow(pos.x, pos.y, startX, startY);
             } else if (LINE_TOOLS.includes(tool)) {
                 // Shift 键锁定水平 / 垂直方向
@@ -1367,7 +1367,7 @@
         
         // 实时响应 Ctrl (箭头反转) 和 Shift (正形状/直线)
         if (isDrawing) {
-            if ((tool === 'arrow' && e.key === 'Control') || 
+            if ((tool === 'arrow' && e.key === 'Shift') || 
                 (SHAPE_TOOLS.includes(tool) && e.key === 'Shift') ||
                 (tool === 'pen' && e.key === 'Shift') ||
                 (tool === 'eraser-circle' && e.key === 'Shift')) {
@@ -1376,7 +1376,6 @@
                     clientX: lastPos.x * scale + scrollX, 
                     clientY: lastPos.y * scale + scrollY,
                     shiftKey: e.shiftKey || e.key === 'Shift',
-                    ctrlKey: e.ctrlKey || e.key === 'Control',
                     bubbles: true
                 });
                 window.dispatchEvent(ev);
@@ -1386,13 +1385,12 @@
 
     window.onkeyup = e => {
         if (isDrawing) {
-            if ((tool === 'arrow' && e.key === 'Control') || 
+            if ((tool === 'arrow' && e.key === 'Shift') || 
                 (SHAPE_TOOLS.includes(tool) && e.key === 'Shift')) {
                 const ev = new MouseEvent('mousemove', {
                     clientX: lastPos.x * scale + scrollX, 
                     clientY: lastPos.y * scale + scrollY,
                     shiftKey: e.shiftKey && e.key !== 'Shift',
-                    ctrlKey: e.ctrlKey && e.key !== 'Control',
                     bubbles: true
                 });
                 window.dispatchEvent(ev);
