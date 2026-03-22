@@ -331,7 +331,7 @@
 
         <!-- 绘制工具：形状 / 箭头 / 直线 / 文字 -->
         <div class="tool-group">
-            <button class="tool-btn active" id="shapeBtn"
+            <button class="tool-btn" id="shapeBtn"
                 onclick="setTool(currentShape, this)"
                 oncontextmenu="toggleShapeMenu(event)"
                 title="形状（右键选类型）">▢</button>
@@ -349,7 +349,7 @@
         <div class="toolbar-divider"></div>
 
         <!-- 绘制工具：画笔 / 橡皮擦 / 印章 -->
-        <button class="tool-btn" onclick="setTool('pen', this)" title="画笔">✏</button>
+        <button class="tool-btn active" id="penBtn" onclick="setTool('pen', this)" title="画笔">✏</button>
         <button class="tool-btn" id="eraserBtn" onclick="setTool('eraser-circle', this)" title="橡皮擦">⛫</button>
         <div class="tool-group">
             <button class="tool-btn" id="stampBtn"
@@ -470,7 +470,7 @@
     };
     const STAMP_TOOLS = Object.keys(STAMP_MAP);
 
-    let tool = 'rect', isDrawing = false, isPanning = false;
+    let tool = 'pen', isDrawing = false, isPanning = false;
     let currentShape = 'rect';
     let currentLineStyle = 'line-solid';
     let currentStamp = 'stamp-check';
@@ -1203,6 +1203,8 @@
         } else if (t === 'crop') {
             document.getElementById('cropBtn').classList.add('active');
             viewport.style.cursor = 'crosshair';
+        } else if (t === 'pen') {
+            document.getElementById('penBtn').classList.add('active');
         } else {
             btn.classList.add('active');
         }
@@ -1345,10 +1347,14 @@
         if(hasCmdKey(e) && e.key === 'z') undo();
         if(hasCmdKey(e) && e.key === 'c' && document.activeElement !== textInput) copyToClipboard();
 
-        // Enter 确认裁剪
+        // Enter 确认裁剪 / Esc 取消裁剪
         if (e.key === 'Enter' && tool === 'crop' && document.getElementById('crop-confirm-bar').classList.contains('show')) {
             e.preventDefault();
             confirmCrop();
+        }
+        if (e.key === 'Escape' && tool === 'crop') {
+            e.preventDefault();
+            cancelCrop();
         }
 
         // Tab 键切换工具栏显示/隐藏
