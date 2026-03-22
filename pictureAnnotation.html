@@ -324,7 +324,7 @@
 
         <!-- 文件操作 -->
         <button class="tool-btn" onclick="newCanvas()"        title="新建画布">📄</button>
-        <button class="tool-btn" onclick="copyToClipboard()"  title="复制到剪贴板 (Ctrl+C)" id="copyBtn">📋</button>
+        <button class="tool-btn" onclick="copyToClipboard()"  id="copyBtn">📋</button>
         <button class="tool-btn" onclick="saveImage()"        title="保存" style="color:#99e0ff;">💾</button>
 
         <div class="toolbar-divider"></div>
@@ -1307,9 +1307,19 @@
     async function copyToClipboard() {
         const btn = document.getElementById('copyBtn');
         try {
-            const blob = await new Promise(resolve => getMergedCanvas().toBlob(resolve, 'image/png'));
+            // Safari requires ClipboardItem to receive a Promise<Blob> directly,
+            // rather than an already-resolved Blob obtained via await.
+            // Passing the Promise keeps the operation within the user-gesture context,
+            // which Safari enforces strictly.
+            const merged = getMergedCanvas();
+            const blobPromise = merged.convertToBlob
+                ? merged.convertToBlob({ type: 'image/png' })           // OffscreenCanvas (future-proof)
+                : new Promise((resolve, reject) =>
+                    merged.toBlob(b => b ? resolve(b) : reject(new Error('toBlob failed')), 'image/png')
+                  );
+
             await navigator.clipboard.write([
-                new ClipboardItem({ 'image/png': blob })
+                new ClipboardItem({ 'image/png': blobPromise })
             ]);
             btn.textContent = '✅';
             btn.style.background = '#28a745';
@@ -1322,9 +1332,18 @@
         }
     }
     
+    // macOS 使用 Command 键 (metaKey) 作为主修饰键，其他平台使用 Ctrl 键
+    const isMac = /mac/i.test(navigator.userAgentData?.platform ?? navigator.platform);
+    const hasCmdKey = e => isMac ? e.metaKey : e.ctrlKey;
+
+    // 根据平台动态设置快捷键提示
+    const mod = isMac ? '⌘' : 'Ctrl';
+    document.getElementById('copyBtn').title = `复制到剪贴板 (${mod}+C)`;
+    document.querySelector('[title="撤销 (Ctrl+Z)"]').title = `撤销 (${mod}+Z)`;
+
     window.onkeydown = e => { 
-        if(e.ctrlKey && e.key === 'z') undo();
-        if(e.ctrlKey && e.key === 'c' && document.activeElement !== textInput) copyToClipboard();
+        if(hasCmdKey(e) && e.key === 'z') undo();
+        if(hasCmdKey(e) && e.key === 'c' && document.activeElement !== textInput) copyToClipboard();
 
         // Enter 确认裁剪
         if (e.key === 'Enter' && tool === 'crop' && document.getElementById('crop-confirm-bar').classList.contains('show')) {
