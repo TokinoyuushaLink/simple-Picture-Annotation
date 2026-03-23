@@ -470,6 +470,39 @@
     };
     const STAMP_TOOLS = Object.keys(STAMP_MAP);
 
+    // =====================================================================
+    // 每个工具独立的滑动条大小（初始值 + localStorage 持久化）
+    // =====================================================================
+    const TOOL_SIZE_DEFAULTS = {
+        'pen':            2,
+        'eraser-circle':  10,
+        'arrow':          3,
+        'text':           5,
+        'stamp':          3,
+        'shape':          3,
+        'line':           2,
+        'table':          3,
+        'crop':           3,
+    };
+
+    function getToolSizeKey(t) {
+        if (SHAPE_TOOLS.includes(t))  return 'shape';
+        if (LINE_TOOLS.includes(t))   return 'line';
+        if (STAMP_TOOLS.includes(t))  return 'stamp';
+        return t;
+    }
+
+    function loadToolSize(t) {
+        const key = getToolSizeKey(t);
+        const stored = sessionStorage.getItem('toolSize_' + key);
+        return stored !== null ? parseInt(stored) : (TOOL_SIZE_DEFAULTS[key] ?? 3);
+    }
+
+    function saveToolSize(t, val) {
+        const key = getToolSizeKey(t);
+        sessionStorage.setItem('toolSize_' + key, val);
+    }
+
     let tool = 'pen', isDrawing = false, isPanning = false;
     let currentShape = 'rect';
     let currentLineStyle = 'line-solid';
@@ -537,6 +570,8 @@
         sizeDot.style.height = val + 'px';
         sizeDot.style.background = currentColor;
         if (tool === 'eraser-circle') updateEraserCursor();
+        // 实时保存当前工具的大小
+        saveToolSize(tool, parseInt(val));
     };
     lineWidthInput.onmouseup = () => {
         setTimeout(() => {
@@ -567,6 +602,8 @@
         saveState();
         updateTransform();
     }
+    // 初始化时加载初始工具（画笔）的记忆大小
+    lineWidthInput.value = loadToolSize('pen');
     initCanvas(800, 600);
     
     function newCanvas() {
@@ -1187,6 +1224,12 @@
     function selectStamp(stamp, icon) { selectSubTool('stampSubMenu', 'stampBtn', 'stamp', stamp, icon); }
 
     function setTool(t, btn) {
+        // 保存当前工具的滑动条值
+        saveToolSize(tool, parseInt(lineWidthInput.value));
+        // 切换到新工具，恢复其记忆的大小
+        const newSize = loadToolSize(t);
+        lineWidthInput.value = newSize;
+
         tool = t;
         document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
         if (SHAPE_TOOLS.includes(t)) {
