@@ -1567,17 +1567,39 @@
     // 游戏式圆盘工具切换器
     // =====================================================================
     (function() {
-        // 6 个常用工具定义
+        // 获取当前印章图标（跟随 currentStamp）
+        function getStampIcon() { return STAMP_MAP[currentStamp] || '✔'; }
+
+        // 主圆盘工具定义（矩形 → 印章）
         const WHEEL_TOOLS = [
             { id: 'pen',          icon: '✏',  label: '画笔',   action: () => { setTool('pen', document.getElementById('penBtn')); } },
             { id: 'arrow',        icon: '➔',  label: '箭头',   action: () => { setTool('arrow', document.querySelector('[title="箭头"]')); } },
-            { id: 'rect',         icon: '▢',  label: '矩形',   action: () => { currentShape = 'rect'; document.getElementById('shapeBtn').innerText = '▢'; setTool('rect', document.getElementById('shapeBtn')); } },
+            { id: 'stamp',        icon: () => getStampIcon(), label: '印章', action: () => { setTool(currentStamp, document.getElementById('stampBtn')); } },
             { id: 'eraser-circle',icon: '⛫',  label: '橡皮擦', action: () => { setTool('eraser-circle', document.getElementById('eraserBtn')); } },
             { id: 'text',         icon: 'T',  label: '文字',   action: () => { setTool('text', document.querySelector('[title="文字"]')); } },
             { id: 'crop',         icon: '✂',  label: '裁剪',   action: () => { setTool('crop', document.getElementById('cropBtn')); } },
         ];
 
-        const N = WHEEL_TOOLS.length;
+        // 子工具圆盘定义（哪些主工具有子工具）
+        const SUB_WHEEL_TOOLS = {
+            'stamp': [
+                { id: 'stamp-check',    icon: '✔', label: '打勾',   action: () => { selectStamp('stamp-check',    '✔'); } },
+                { id: 'stamp-star',     icon: '★', label: '星星',   action: () => { selectStamp('stamp-star',     '★'); } },
+                { id: 'stamp-triangle', icon: '▲', label: '三角形', action: () => { selectStamp('stamp-triangle', '▲'); } },
+                { id: 'stamp-heart',    icon: '♥', label: '心形',   action: () => { selectStamp('stamp-heart',    '♥'); } },
+            ],
+            'pen':          null,
+            'arrow':        null,
+            'eraser-circle':null,
+            'text':         null,
+            'crop':         null,
+        };
+
+        // 当前圆盘模式：'main' | 'sub'
+        let wheelMode = 'main';
+        let subToolId = null;   // 进入子圆盘时对应的主工具 id
+
+        const N_MAIN = WHEEL_TOOLS.length;
         const INNER_R  = 38;   // 内圆半径（空白中心）
         const OUTER_R  = 120;  // 外圆半径
         const ICON_R   = (INNER_R + OUTER_R) / 2;
@@ -1586,14 +1608,41 @@
         const backdropEl   = document.getElementById('tool-wheel-backdrop');
         const svgEl        = document.getElementById('tool-wheel-svg');
 
+        // 子工具提示文本元素（动态追加到 wheelEl）
+        let subHintEl = null;
+        function ensureSubHint() {
+            if (!subHintEl) {
+                subHintEl = document.createElement('div');
+                subHintEl.style.cssText = [
+                    'position:absolute',
+                    'left:50%',
+                    'transform:translateX(-50%)',
+                    'top:' + (OUTER_R + 14) + 'px',
+                    'color:rgba(255,255,255,0.45)',
+                    'font-size:11px',
+                    'white-space:nowrap',
+                    'pointer-events:none',
+                    'letter-spacing:0.04em',
+                ].join(';');
+                wheelEl.appendChild(subHintEl);
+            }
+        }
+        function setSubHintText(txt) {
+            ensureSubHint();
+            subHintEl.textContent = txt;
+        }
+        function hideSubHint() {
+            if (subHintEl) subHintEl.textContent = '';
+        }
+
         let wheelOpen      = false;
         let openX = 0, openY = 0;   // 圆盘圆心（屏幕坐标）
         let hoveredIndex   = -1;    // 当前悬停的扇形索引
         let spaceHeld      = false; // 空格是否按住
 
         // 扇形路径生成（SVG d 属性）
-        function slicePath(i, inner, outer) {
-            const angleStep = (2 * Math.PI) / N;
+        function slicePath(i, inner, outer, total) {
+            const angleStep = (2 * Math.PI) / total;
             // 稍微留一点间隙（1.5°）
             const gap = 0.026;
             const startA = angleStep * i - Math.PI / 2 + gap;
@@ -1616,13 +1665,14 @@
             ].join(' ');
         }
 
-        // 构建 SVG 内容
-        function buildWheel() {
+        // 构建 SVG 内容（tools = 当前要显示的工具列表）
+        function buildWheel(tools) {
             svgEl.innerHTML = '';
+            const N = tools.length;
             const angleStep = (2 * Math.PI) / N;
 
             // 扇形组
-            WHEEL_TOOLS.forEach((t, i) => {
+            tools.forEach((t, i) => {
                 const midA = angleStep * i - Math.PI / 2 + angleStep / 2;
 
                 // 扇形 group
@@ -1632,19 +1682,19 @@
 
                 // 背景扇形
                 const bgPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-                bgPath.setAttribute('d', slicePath(i, INNER_R, OUTER_R));
+                bgPath.setAttribute('d', slicePath(i, INNER_R, OUTER_R, N));
                 bgPath.setAttribute('fill', 'rgba(36,36,36,0.88)');
                 bgPath.classList.add('slice-bg');
 
                 // 边框扇形（只描边不填充）
                 const borderPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-                borderPath.setAttribute('d', slicePath(i, INNER_R, OUTER_R));
+                borderPath.setAttribute('d', slicePath(i, INNER_R, OUTER_R, N));
                 borderPath.setAttribute('fill', 'none');
                 borderPath.setAttribute('stroke', 'rgba(255,255,255,0.10)');
                 borderPath.setAttribute('stroke-width', '1');
                 borderPath.classList.add('slice-border');
 
-                // 图标
+                // 图标（支持函数形式的动态图标）
                 const iconText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
                 iconText.setAttribute('x', (Math.cos(midA) * ICON_R).toFixed(2));
                 iconText.setAttribute('y', (Math.sin(midA) * ICON_R).toFixed(2));
@@ -1654,7 +1704,7 @@
                     iconText.setAttribute('font-family', "'Segoe UI Variable','Segoe UI',system-ui,sans-serif");
                     iconText.style.fontSize = '20px';
                 }
-                iconText.textContent = t.icon;
+                iconText.textContent = typeof t.icon === 'function' ? t.icon() : t.icon;
 
                 g.appendChild(bgPath);
                 g.appendChild(borderPath);
@@ -1671,10 +1721,33 @@
             centerCircle.setAttribute('stroke-width', '1');
             centerCircle.id = 'wheel-center-ring';
             svgEl.appendChild(centerCircle);
+
+            // 子圆盘模式：在中心显示模式标签
+            if (wheelMode === 'sub') {
+                const modeLabel = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                modeLabel.setAttribute('x', '0'); modeLabel.setAttribute('y', '0');
+                modeLabel.setAttribute('dominant-baseline', 'middle');
+                modeLabel.setAttribute('text-anchor', 'middle');
+                modeLabel.setAttribute('font-size', '9');
+                modeLabel.setAttribute('fill', 'rgba(255,255,255,0.45)');
+                modeLabel.setAttribute('pointer-events', 'none');
+                modeLabel.textContent = '子工具';
+                svgEl.appendChild(modeLabel);
+            }
+        }
+
+        // 获取当前活动工具列表
+        function activeTools() {
+            if (wheelMode === 'sub' && subToolId && SUB_WHEEL_TOOLS[subToolId]) {
+                return SUB_WHEEL_TOOLS[subToolId];
+            }
+            return WHEEL_TOOLS;
         }
 
         // 根据角度确定悬停的扇形（触发区域扩展到整个页面，只用角度判断）
         function getSliceFromPoint(cx, cy, mx, my) {
+            const tools = activeTools();
+            const N = tools.length;
             const dx = mx - cx, dy = my - cy;
             const dist = Math.sqrt(dx * dx + dy * dy);
             if (dist < 6) return -1; // 极近中心死区，避免抖动
@@ -1701,8 +1774,10 @@
         }
 
         // 打开圆盘（以鼠标当前位置为圆心）
-        function openWheel(x, y) {
+        function openWheel(x, y, mode, toolId) {
             if (wheelOpen) return;
+            wheelMode = mode || 'main';
+            subToolId = toolId || null;
             wheelOpen = true;
             hoveredIndex = -1;
 
@@ -1713,7 +1788,20 @@
             wheelEl.style.left = openX + 'px';
             wheelEl.style.top  = openY + 'px';
 
-            buildWheel();
+            if (wheelMode === 'sub') {
+                const tools = SUB_WHEEL_TOOLS[subToolId];
+                buildWheel(tools);
+                hideSubHint();
+            } else if (wheelMode === 'sub-none') {
+                // 当前工具无子工具，显示主圆盘 + 提示文字
+                wheelMode = 'main';
+                buildWheel(WHEEL_TOOLS);
+                setSubHintText('当前工具没有子工具');
+            } else {
+                buildWheel(WHEEL_TOOLS);
+                hideSubHint();
+            }
+
             backdropEl.classList.add('visible');
             wheelEl.classList.add('visible');
         }
@@ -1724,12 +1812,15 @@
             wheelOpen = false;
 
             if (activate && hoveredIndex >= 0) {
-                WHEEL_TOOLS[hoveredIndex].action();
+                activeTools()[hoveredIndex].action();
+                // 子工具切换后，刷新主圆盘印章图标（下次打开时自动读取）
             }
 
             wheelEl.classList.remove('visible');
             backdropEl.classList.remove('visible');
             hoveredIndex = -1;
+            wheelMode = 'main';
+            subToolId = null;
         }
 
         // 记录最后鼠标位置（用于打开圆盘位置）
@@ -1746,13 +1837,51 @@
         const origKeyDown = window.onkeydown;
         const origKeyUp   = window.onkeyup;
 
+        // 切换圆盘内容（主 ↔ 子），不关闭圆盘，保留圆心位置
+        function switchWheelMode(toSub) {
+            if (!wheelOpen) return;
+            hoveredIndex = -1;
+
+            if (toSub) {
+                let mainId = tool;
+                if (STAMP_TOOLS.includes(tool)) mainId = 'stamp';
+                if (SUB_WHEEL_TOOLS[mainId] && SUB_WHEEL_TOOLS[mainId].length > 0) {
+                    wheelMode = 'sub';
+                    subToolId = mainId;
+                    buildWheel(SUB_WHEEL_TOOLS[mainId]);
+                    hideSubHint();
+                } else {
+                    // 无子工具：保持主圆盘，显示提示
+                    wheelMode = 'main';
+                    subToolId = null;
+                    buildWheel(WHEEL_TOOLS);
+                    setSubHintText('当前工具没有子工具');
+                }
+            } else {
+                wheelMode = 'main';
+                subToolId = null;
+                buildWheel(WHEEL_TOOLS);
+                hideSubHint();
+            }
+
+            // 重新计算悬停（鼠标位置不变）
+            updateHover(lastMouseX, lastMouseY);
+        }
+
         window.onkeydown = function(e) {
             // 空格：打开圆盘（若文本输入框激活则放行）
             if (e.code === 'Space' && !spaceHeld && document.activeElement !== textInput) {
                 e.preventDefault();
                 spaceHeld = true;
-                openWheel(lastMouseX, lastMouseY);
+                // 始终先以主圆盘打开，Shift 状态在下面处理
+                openWheel(lastMouseX, lastMouseY, 'main', null);
+                // 如果已经按住 Shift，立即切换
+                if (e.shiftKey) switchWheelMode(true);
                 return;
+            }
+            // 圆盘打开时按下 Shift → 切到子工具
+            if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') {
+                if (wheelOpen) switchWheelMode(true);
             }
             if (origKeyDown) origKeyDown.call(this, e);
         };
@@ -1763,6 +1892,10 @@
                 spaceHeld = false;
                 closeWheel(true); // 松开空格时切换工具
                 return;
+            }
+            // 圆盘打开时松开 Shift → 切回主圆盘
+            if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') {
+                if (wheelOpen) switchWheelMode(false);
             }
             if (origKeyUp) origKeyUp.call(this, e);
         };
