@@ -1570,12 +1570,18 @@
         // 获取当前印章图标（跟随 currentStamp）
         function getStampIcon() { return STAMP_MAP[currentStamp] || '✔'; }
 
-        // 主圆盘工具定义（矩形 → 印章）
+        // 获取当前直线样式图标
+        function getLineIcon() {
+            const icons = { 'line-solid': '—', 'line-short-dash': '╌', 'line-long-dash': '╍', 'line-wave': '〜' };
+            return icons[currentLineStyle] || '—';
+        }
+
+        // 主圆盘工具定义（橡皮擦 → 直线工具）
         const WHEEL_TOOLS = [
             { id: 'pen',          icon: '✏',  label: '画笔',   action: () => { setTool('pen', document.getElementById('penBtn')); } },
             { id: 'arrow',        icon: '➔',  label: '箭头',   action: () => { setTool('arrow', document.querySelector('[title="箭头"]')); } },
             { id: 'stamp',        icon: () => getStampIcon(), label: '印章', action: () => { setTool(currentStamp, document.getElementById('stampBtn')); } },
-            { id: 'eraser-circle',icon: '⛫',  label: '橡皮擦', action: () => { setTool('eraser-circle', document.getElementById('eraserBtn')); } },
+            { id: 'line',         icon: () => getLineIcon(), label: '直线',  action: () => { setTool(currentLineStyle, document.getElementById('lineBtn')); } },
             { id: 'text',         icon: 'T',  label: '文字',   action: () => { setTool('text', document.querySelector('[title="文字"]')); } },
             { id: 'crop',         icon: '✂',  label: '裁剪',   action: () => { setTool('crop', document.getElementById('cropBtn')); } },
         ];
@@ -1588,11 +1594,16 @@
                 { id: 'stamp-triangle', icon: '▲', label: '三角形', action: () => { selectStamp('stamp-triangle', '▲'); } },
                 { id: 'stamp-heart',    icon: '♥', label: '心形',   action: () => { selectStamp('stamp-heart',    '♥'); } },
             ],
-            'pen':          null,
-            'arrow':        null,
-            'eraser-circle':null,
-            'text':         null,
-            'crop':         null,
+            'line': [
+                { id: 'line-solid',      icon: '—', label: '实线',   action: () => { selectLineStyle('line-solid',      '—'); } },
+                { id: 'line-short-dash', icon: '╌', label: '短虚线', action: () => { selectLineStyle('line-short-dash', '╌'); } },
+                { id: 'line-long-dash',  icon: '╍', label: '长虚线', action: () => { selectLineStyle('line-long-dash',  '╍'); } },
+                { id: 'line-wave',       icon: '〜', label: '波浪线', action: () => { selectLineStyle('line-wave',       '〜'); } },
+            ],
+            'pen':    null,
+            'arrow':  null,
+            'text':   null,
+            'crop':   null,
         };
 
         // 当前圆盘模式：'main' | 'sub'
@@ -1794,9 +1805,11 @@
                 hideSubHint();
             } else if (wheelMode === 'sub-none') {
                 // 当前工具无子工具，显示主圆盘 + 提示文字
+                const labelMap = { pen:'画笔', arrow:'箭头', text:'文字', crop:'裁剪' };
+                const name = labelMap[toolId] || toolId || '当前工具';
                 wheelMode = 'main';
                 buildWheel(WHEEL_TOOLS);
-                setSubHintText('当前工具没有子工具');
+                setSubHintText('\u300C' + name + '\u300D\u6CA1\u6709\u5B50\u5DE5\u5177');
             } else {
                 buildWheel(WHEEL_TOOLS);
                 hideSubHint();
@@ -1838,26 +1851,40 @@
         const origKeyUp   = window.onkeyup;
 
         // 切换圆盘内容（主 ↔ 子），不关闭圆盘，保留圆心位置
+        // toSub=true 时，优先根据鼠标悬停的扇形来决定展开哪个子工具
         function switchWheelMode(toSub) {
             if (!wheelOpen) return;
-            hoveredIndex = -1;
 
             if (toSub) {
-                let mainId = tool;
-                if (STAMP_TOOLS.includes(tool)) mainId = 'stamp';
+                // 优先取悬停扇形的工具 id；若无悬停则回退到当前激活工具
+                let mainId = null;
+                if (hoveredIndex >= 0 && wheelMode === 'main') {
+                    mainId = WHEEL_TOOLS[hoveredIndex] ? WHEEL_TOOLS[hoveredIndex].id : null;
+                }
+                if (!mainId) {
+                    mainId = tool;
+                    if (STAMP_TOOLS.includes(mainId)) mainId = 'stamp';
+                    if (LINE_TOOLS.includes(mainId))  mainId = 'line';
+                }
+
+                hoveredIndex = -1;
+
                 if (SUB_WHEEL_TOOLS[mainId] && SUB_WHEEL_TOOLS[mainId].length > 0) {
                     wheelMode = 'sub';
                     subToolId = mainId;
                     buildWheel(SUB_WHEEL_TOOLS[mainId]);
                     hideSubHint();
                 } else {
-                    // 无子工具：保持主圆盘，显示提示
+                    // 无子工具：保持主圆盘，显示提示（含工具名）
+                    const labelMap = { pen:'画笔', arrow:'箭头', text:'文字', crop:'裁剪' };
+                    const name = labelMap[mainId] || mainId;
                     wheelMode = 'main';
                     subToolId = null;
                     buildWheel(WHEEL_TOOLS);
-                    setSubHintText('当前工具没有子工具');
+                    setSubHintText('\u300C' + name + '\u300D\u6CA1\u6709\u5B50\u5DE5\u5177');
                 }
             } else {
+                hoveredIndex = -1;
                 wheelMode = 'main';
                 subToolId = null;
                 buildWheel(WHEEL_TOOLS);
