@@ -307,11 +307,8 @@
         cursor: pointer;
         transition: none;
     }
-    .wheel-slice path { }
     .wheel-slice.hovered path.slice-bg {
         fill: rgba(96, 205, 255, 0.22) !important;
-    }
-    .wheel-slice.hovered path.slice-border {
         stroke: rgba(96, 205, 255, 0.7) !important;
         stroke-width: 1.5px !important;
     }
@@ -485,7 +482,7 @@
 ========================================================= -->
 <div id="tool-wheel-backdrop"></div>
 <div id="tool-wheel">
-    <svg id="tool-wheel-svg" width="280" height="280" viewBox="-140 -140 280 280"
+    <svg id="tool-wheel-svg" width="300" height="300" viewBox="-150 -150 300 300"
          xmlns="http://www.w3.org/2000/svg">
     </svg>
 </div>
@@ -1576,10 +1573,21 @@
             return icons[currentLineStyle] || '—';
         }
 
-        // 主圆盘工具定义（橡皮擦 → 直线工具）
+        // 获取当前形状图标
+        function getShapeIcon() {
+            const icons = {
+                'rect': '▢', 'circle': '◯', 'triangle': '△',
+                'rect-fill': '◼︎', 'circle-fill': '⚫︎', 'triangle-fill': '▲'
+            };
+            return icons[currentShape] || '▢';
+        }
+
+        // 主圆盘工具定义（8个扇形）
         const WHEEL_TOOLS = [
             { id: 'pen',          icon: '✏',  label: '画笔',   action: () => { setTool('pen', document.getElementById('penBtn')); } },
+            { id: 'eraser',       icon: '⛫',  label: '橡皮擦', action: () => { setTool('eraser-circle', document.getElementById('eraserBtn')); } },
             { id: 'arrow',        icon: '➔',  label: '箭头',   action: () => { setTool('arrow', document.querySelector('[title="箭头"]')); } },
+            { id: 'shape',        icon: () => getShapeIcon(), label: '形状', action: () => { setTool(currentShape, document.getElementById('shapeBtn')); } },
             { id: 'stamp',        icon: () => getStampIcon(), label: '印章', action: () => { setTool(currentStamp, document.getElementById('stampBtn')); } },
             { id: 'line',         icon: () => getLineIcon(), label: '直线',  action: () => { setTool(currentLineStyle, document.getElementById('lineBtn')); } },
             { id: 'text',         icon: 'T',  label: '文字',   action: () => { setTool('text', document.querySelector('[title="文字"]')); } },
@@ -1588,6 +1596,14 @@
 
         // 子工具圆盘定义（哪些主工具有子工具）
         const SUB_WHEEL_TOOLS = {
+            'shape': [
+                { id: 'rect',          icon: '▢',  label: '矩形',     action: () => { selectShape('rect',          '▢'); } },
+                { id: 'circle',        icon: '◯',  label: '椭圆',     action: () => { selectShape('circle',        '◯'); } },
+                { id: 'triangle',      icon: '△',  label: '三角形',   action: () => { selectShape('triangle',      '△'); } },
+                { id: 'rect-fill',     icon: '◼︎', label: '填充矩形', action: () => { selectShape('rect-fill',     '◼︎'); } },
+                { id: 'circle-fill',   icon: '⚫︎', label: '填充椭圆', action: () => { selectShape('circle-fill',   '⚫︎'); } },
+                { id: 'triangle-fill', icon: '▲',  label: '填充三角', action: () => { selectShape('triangle-fill', '▲'); } },
+            ],
             'stamp': [
                 { id: 'stamp-check',    icon: '✔', label: '打勾',   action: () => { selectStamp('stamp-check',    '✔'); } },
                 { id: 'stamp-star',     icon: '★', label: '星星',   action: () => { selectStamp('stamp-star',     '★'); } },
@@ -1601,6 +1617,7 @@
                 { id: 'line-wave',       icon: '〜', label: '波浪线', action: () => { selectLineStyle('line-wave',       '〜'); } },
             ],
             'pen':    null,
+            'eraser': null,
             'arrow':  null,
             'text':   null,
             'crop':   null,
@@ -1651,100 +1668,85 @@
         let hoveredIndex   = -1;    // 当前悬停的扇形索引
         let spaceHeld      = false; // 空格是否按住
 
-        // 扇形路径生成（SVG d 属性）
-        function slicePath(i, inner, outer, total) {
-            const angleStep = (2 * Math.PI) / total;
-            // 稍微留一点间隙（1.5°）
-            const gap = 0.026;
-            const startA = angleStep * i - Math.PI / 2 + gap;
-            const endA   = angleStep * (i + 1) - Math.PI / 2 - gap;
-
-            const cos = Math.cos, sin = Math.sin;
-            const x1 = cos(startA) * inner, y1 = sin(startA) * inner;
-            const x2 = cos(endA)   * inner, y2 = sin(endA)   * inner;
-            const x3 = cos(endA)   * outer, y3 = sin(endA)   * outer;
-            const x4 = cos(startA) * outer, y4 = sin(startA) * outer;
-
-            const largeArc = (endA - startA) > Math.PI ? 1 : 0;
-
-            return [
-                `M ${x1.toFixed(3)} ${y1.toFixed(3)}`,
-                `A ${inner} ${inner} 0 ${largeArc} 1 ${x2.toFixed(3)} ${y2.toFixed(3)}`,
-                `L ${x3.toFixed(3)} ${y3.toFixed(3)}`,
-                `A ${outer} ${outer} 0 ${largeArc} 0 ${x4.toFixed(3)} ${y4.toFixed(3)}`,
-                'Z'
-            ].join(' ');
+        // SVG 元素工厂（消除重复的长命名空间字符串）
+        function makeSvg(tag, attrs) {
+            const el = document.createElementNS('http://www.w3.org/2000/svg', tag);
+            if (attrs) for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+            return el;
         }
+
+        // 扇形路径生成（接收预算好的 angleStep，避免在调用方重复计算）
+        function slicePath(i, inner, outer, angleStep) {
+            const gap = 0.026;
+            const offset = -Math.PI / 2 - angleStep / 2;  // 旋转半格，使上下居中各一扇形
+            const startA = angleStep * i + offset + gap;
+            const endA   = angleStep * (i + 1) + offset - gap;
+            const largeArc = (endA - startA) > Math.PI ? 1 : 0;
+            const pt = (r, a) => `${(Math.cos(a)*r).toFixed(3)} ${(Math.sin(a)*r).toFixed(3)}`;
+            return `M ${pt(inner,startA)} A ${inner} ${inner} 0 ${largeArc} 1 ${pt(inner,endA)}`
+                 + ` L ${pt(outer,endA)} A ${outer} ${outer} 0 ${largeArc} 0 ${pt(outer,startA)} Z`;
+        }
+
+        // 中心圆：只创建一次，buildWheel 复用
+        const centerCircle = makeSvg('circle', {
+            cx: '0', cy: '0', r: INNER_R - 2,
+            fill: 'rgba(28,28,28,0.92)',
+            stroke: 'rgba(255,255,255,0.12)',
+            'stroke-width': '1',
+        });
+        centerCircle.id = 'wheel-center-ring';
+
+        // 子圆盘标签：只创建一次，buildWheel 复用
+        const modeLabelEl = makeSvg('text', {
+            x: '0', y: '0',
+            'dominant-baseline': 'middle',
+            'text-anchor': 'middle',
+            'font-size': '9',
+            fill: 'rgba(255,255,255,0.45)',
+            'pointer-events': 'none',
+        });
 
         // 构建 SVG 内容（tools = 当前要显示的工具列表）
         function buildWheel(tools) {
             svgEl.innerHTML = '';
             const N = tools.length;
-            const angleStep = (2 * Math.PI) / N;
+            const angleStep = (2 * Math.PI) / N;  // 只算一次，传给 slicePath
 
-            // 扇形组
             tools.forEach((t, i) => {
-                const midA = angleStep * i - Math.PI / 2 + angleStep / 2;
+                const midA = angleStep * i - Math.PI / 2;  // 与 slicePath offset 同步（扇形中心）
 
-                // 扇形 group
-                const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+                const g = makeSvg('g');
                 g.classList.add('wheel-slice');
                 g.dataset.index = i;
 
-                // 背景扇形
-                const bgPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-                bgPath.setAttribute('d', slicePath(i, INNER_R, OUTER_R, N));
-                bgPath.setAttribute('fill', 'rgba(36,36,36,0.88)');
-                bgPath.classList.add('slice-bg');
+                // 合并背景填充 + 边框描边为一个 path（减少 DOM 节点 & 路径计算各一半）
+                const path = makeSvg('path', {
+                    d: slicePath(i, INNER_R, OUTER_R, angleStep),
+                    fill: 'rgba(36,36,36,0.88)',
+                    stroke: 'rgba(255,255,255,0.10)',
+                    'stroke-width': '1',
+                });
+                path.classList.add('slice-bg');
 
-                // 边框扇形（只描边不填充）
-                const borderPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-                borderPath.setAttribute('d', slicePath(i, INNER_R, OUTER_R, N));
-                borderPath.setAttribute('fill', 'none');
-                borderPath.setAttribute('stroke', 'rgba(255,255,255,0.10)');
-                borderPath.setAttribute('stroke-width', '1');
-                borderPath.classList.add('slice-border');
-
-                // 图标（支持函数形式的动态图标）
-                const iconText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-                iconText.setAttribute('x', (Math.cos(midA) * ICON_R).toFixed(2));
-                iconText.setAttribute('y', (Math.sin(midA) * ICON_R).toFixed(2));
-                iconText.classList.add('wheel-icon');
+                const icon = makeSvg('text', {
+                    x: (Math.cos(midA) * ICON_R).toFixed(2),
+                    y: (Math.sin(midA) * ICON_R).toFixed(2),
+                });
+                icon.classList.add('wheel-icon');
                 if (t.id === 'text') {
-                    iconText.setAttribute('font-weight', 'bold');
-                    iconText.setAttribute('font-family', "'Segoe UI Variable','Segoe UI',system-ui,sans-serif");
-                    iconText.style.fontSize = '20px';
+                    icon.setAttribute('font-weight', 'bold');
+                    icon.setAttribute('font-family', "'Segoe UI Variable','Segoe UI',system-ui,sans-serif");
+                    icon.style.fontSize = '20px';
                 }
-                iconText.textContent = typeof t.icon === 'function' ? t.icon() : t.icon;
+                icon.textContent = typeof t.icon === 'function' ? t.icon() : t.icon;
 
-                g.appendChild(bgPath);
-                g.appendChild(borderPath);
-                g.appendChild(iconText);
+                g.append(path, icon);
                 svgEl.appendChild(g);
             });
 
-            // 中心圆
-            const centerCircle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-            centerCircle.setAttribute('cx', '0'); centerCircle.setAttribute('cy', '0');
-            centerCircle.setAttribute('r', INNER_R - 2);
-            centerCircle.setAttribute('fill', 'rgba(28,28,28,0.92)');
-            centerCircle.setAttribute('stroke', 'rgba(255,255,255,0.12)');
-            centerCircle.setAttribute('stroke-width', '1');
-            centerCircle.id = 'wheel-center-ring';
-            svgEl.appendChild(centerCircle);
-
-            // 子圆盘模式：在中心显示模式标签
-            if (wheelMode === 'sub') {
-                const modeLabel = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-                modeLabel.setAttribute('x', '0'); modeLabel.setAttribute('y', '0');
-                modeLabel.setAttribute('dominant-baseline', 'middle');
-                modeLabel.setAttribute('text-anchor', 'middle');
-                modeLabel.setAttribute('font-size', '9');
-                modeLabel.setAttribute('fill', 'rgba(255,255,255,0.45)');
-                modeLabel.setAttribute('pointer-events', 'none');
-                modeLabel.textContent = '子工具';
-                svgEl.appendChild(modeLabel);
-            }
+            // 复用已创建的中心圆与模式标签
+            modeLabelEl.textContent = wheelMode === 'sub' ? '子工具' : '';
+            svgEl.append(centerCircle, modeLabelEl);
         }
 
         // 获取当前活动工具列表
@@ -1762,7 +1764,7 @@
             const dx = mx - cx, dy = my - cy;
             const dist = Math.sqrt(dx * dx + dy * dy);
             if (dist < 6) return -1; // 极近中心死区，避免抖动
-            const angle = Math.atan2(dy, dx) + Math.PI / 2; // 转换到以12点为0
+            const angle = Math.atan2(dy, dx) + Math.PI / 2 + Math.PI / N;  // 与圆盘旋转同步
             const normalized = ((angle % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
             const idx = Math.floor(normalized / (2 * Math.PI / N));
             return Math.min(idx, N - 1);
@@ -1805,7 +1807,7 @@
                 hideSubHint();
             } else if (wheelMode === 'sub-none') {
                 // 当前工具无子工具，显示主圆盘 + 提示文字
-                const labelMap = { pen:'画笔', arrow:'箭头', text:'文字', crop:'裁剪' };
+                const labelMap = { pen:'画笔', eraser:'橡皮擦', arrow:'箭头', shape:'形状', text:'文字', crop:'裁剪' };
                 const name = labelMap[toolId] || toolId || '当前工具';
                 wheelMode = 'main';
                 buildWheel(WHEEL_TOOLS);
@@ -1863,8 +1865,10 @@
                 }
                 if (!mainId) {
                     mainId = tool;
-                    if (STAMP_TOOLS.includes(mainId)) mainId = 'stamp';
-                    if (LINE_TOOLS.includes(mainId))  mainId = 'line';
+                    if (STAMP_TOOLS.includes(mainId))  mainId = 'stamp';
+                    if (LINE_TOOLS.includes(mainId))   mainId = 'line';
+                    if (SHAPE_TOOLS.includes(mainId))  mainId = 'shape';
+                    if (mainId === 'eraser-circle')    mainId = 'eraser';
                 }
 
                 hoveredIndex = -1;
@@ -1876,7 +1880,7 @@
                     hideSubHint();
                 } else {
                     // 无子工具：保持主圆盘，显示提示（含工具名）
-                    const labelMap = { pen:'画笔', arrow:'箭头', text:'文字', crop:'裁剪' };
+                    const labelMap = { pen:'画笔', eraser:'橡皮擦', arrow:'箭头', text:'文字', crop:'裁剪' };
                     const name = labelMap[mainId] || mainId;
                     wheelMode = 'main';
                     subToolId = null;
@@ -1906,8 +1910,8 @@
                 if (e.shiftKey) switchWheelMode(true);
                 return;
             }
-            // 圆盘打开时按下 Shift → 切到子工具
-            if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') {
+            // 圆盘打开时按下 Shift → 切到子工具（e.repeat 过滤持续触发）
+            if ((e.code === 'ShiftLeft' || e.code === 'ShiftRight') && !e.repeat) {
                 if (wheelOpen) switchWheelMode(true);
             }
             if (origKeyDown) origKeyDown.call(this, e);
