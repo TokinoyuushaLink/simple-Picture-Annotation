@@ -393,14 +393,14 @@
                 oncontextmenu="toggleShapeMenu(event)"
                 title="形状（右键选类型）">▢</button>
         </div>
-        <button class="tool-btn" onclick="setTool('arrow', this)" title="箭头">➔</button>
+        <button class="tool-btn" id="arrowBtn" onclick="setTool('arrow', this)" title="箭头">➔</button>
         <div class="tool-group">
             <button class="tool-btn" id="lineBtn"
                 onclick="setTool(currentLineStyle, this)"
                 oncontextmenu="toggleLineMenu(event)"
                 title="直线（右键选样式）">—</button>
         </div>
-        <button class="tool-btn" onclick="setTool('text', this)" title="文字" style="font-size:15px;font-weight:bold;">T</button>
+        <button class="tool-btn" id="textBtn" onclick="setTool('text', this)" title="文字" style="font-size:15px;font-weight:bold;">T</button>
         <button class="tool-btn" id="tableBtn" onclick="activateTableTool(this)" title="表格（点击设置行列数）">⊞</button>
 
         <div class="toolbar-divider"></div>
@@ -1584,14 +1584,14 @@
 
         // 主圆盘工具定义（8个扇形）
         const WHEEL_TOOLS = [
-            { id: 'pen',          icon: '✏',  label: '画笔',   action: () => { setTool('pen', document.getElementById('penBtn')); } },
-            { id: 'eraser',       icon: '⛫',  label: '橡皮擦', action: () => { setTool('eraser-circle', document.getElementById('eraserBtn')); } },
-            { id: 'arrow',        icon: '➔',  label: '箭头',   action: () => { setTool('arrow', document.querySelector('[title="箭头"]')); } },
-            { id: 'shape',        icon: () => getShapeIcon(), label: '形状', action: () => { setTool(currentShape, document.getElementById('shapeBtn')); } },
-            { id: 'stamp',        icon: () => getStampIcon(), label: '印章', action: () => { setTool(currentStamp, document.getElementById('stampBtn')); } },
-            { id: 'line',         icon: () => getLineIcon(), label: '直线',  action: () => { setTool(currentLineStyle, document.getElementById('lineBtn')); } },
-            { id: 'text',         icon: 'T',  label: '文字',   action: () => { setTool('text', document.querySelector('[title="文字"]')); } },
-            { id: 'crop',         icon: '✂',  label: '裁剪',   action: () => { setTool('crop', document.getElementById('cropBtn')); } },
+            { id: 'pen',    icon: '✏',  label: '画笔',   action: () => { setTool('pen',            document.getElementById('penBtn'));    } },
+            { id: 'eraser', icon: '⛫',  label: '橡皮擦', action: () => { setTool('eraser-circle',  document.getElementById('eraserBtn')); } },
+            { id: 'arrow',  icon: '➔',  label: '箭头',   action: () => { setTool('arrow',           document.getElementById('arrowBtn'));  } },
+            { id: 'shape',  icon: () => getShapeIcon(), label: '形状', action: () => { setTool(currentShape, document.getElementById('shapeBtn')); } },
+            { id: 'stamp',  icon: () => getStampIcon(), label: '印章', action: () => { setTool(currentStamp, document.getElementById('stampBtn')); } },
+            { id: 'line',   icon: () => getLineIcon(),  label: '直线', action: () => { setTool(currentLineStyle, document.getElementById('lineBtn')); } },
+            { id: 'text',   icon: 'T',  label: '文字',   action: () => { setTool('text',            document.getElementById('textBtn'));   } },
+            { id: 'crop',   icon: '✂',  label: '裁剪',   action: () => { setTool('crop',            document.getElementById('cropBtn'));   } },
         ];
 
         // 子工具圆盘定义（哪些主工具有子工具）
