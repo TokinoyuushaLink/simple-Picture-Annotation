@@ -710,6 +710,11 @@
     viewport.addEventListener('wheel', e => {
         e.preventDefault();
 
+        // 文字工具输入中或裁剪选区待确认时，禁止所有画布平移/缩放
+        const cropBarActive = document.getElementById('crop-confirm-bar').classList.contains('show');
+        const textInputActive = textInput.style.display === 'block';
+        if (textInputActive || cropBarActive) return;
+
         const mouseX = e.clientX, mouseY = e.clientY;
 
         // 捏合缩放（触控板双指捏合 / Cmd+滚轮）
@@ -774,7 +779,14 @@
             fitToWindow();
             return; 
         }
-        if (e.button === 2) { isPanning = true; return; }
+        if (e.button === 2) {
+            // 文字工具输入中或裁剪选区待确认时，禁止拖动
+            const cropBarActive = document.getElementById('crop-confirm-bar').classList.contains('show');
+            const textInputActive = textInput.style.display === 'block';
+            if (textInputActive || cropBarActive) return;
+            isPanning = true;
+            return;
+        }
         if (textInput.style.display === 'block') {
             // 点击其他区域：提交当前文字，然后继续处理本次点击
             if (textInput._commit) textInput._commit();
