@@ -2,7 +2,7 @@
 单网页图片批注工具\
 轻量，高效\
 \
-【适配】✅firefox类浏览器✅macbook的safari及其触控板❌鼠标滚轮缩放未适配chrome类浏览器\
+【适配】✅firefox类浏览器✅macbook的safari及其触控板❌鼠标滚轮缩放未适配 Win10 Edge\
 【基本使用方法】：
 - 右键进行拖动，中间视图还原缩放，左键进行标注动作
 - shift
