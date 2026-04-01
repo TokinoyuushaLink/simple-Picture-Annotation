@@ -573,6 +573,11 @@
     }
 
     let tool = 'pen', isDrawing = false, isPanning = false;
+    // 文字工具拖拽状态
+    let textDragActive = false, textIsDragging = false;
+    let textMouseDownClientX = 0, textMouseDownClientY = 0;
+    let textMouseDownWorldX = 0, textMouseDownWorldY = 0;
+    const TEXT_DRAG_THRESHOLD = 5; // 超过此像素距离才算拖拽
     let currentShape = 'rect';
     let currentLineStyle = 'line-solid';
     let currentStamp = 'stamp-check';
@@ -798,7 +803,13 @@
         startX = pos.x; startY = pos.y;
         
         if (tool === 'text') {
-            showTextInput(e.clientX, e.clientY, pos.x, pos.y);
+            // 记录按下位置，在 mouseup 时判断是点击还是拖拽
+            textMouseDownClientX = e.clientX;
+            textMouseDownClientY = e.clientY;
+            textMouseDownWorldX  = pos.x;
+            textMouseDownWorldY  = pos.y;
+            textIsDragging = false;
+            textDragActive = true;
             return;
         }
 
@@ -854,11 +865,14 @@
     };
 
     // 动态文本功能
-    function showTextInput(clientX, clientY, worldX, worldY) {
+    function showTextInput(clientX, clientY, worldX, worldY, isDrag) {
         const fontSize = lineWidthInput.value * 2 + 16; // 屏幕像素字号
         const canvasFontSize = fontSize / scale;         // 画布坐标字号
         const lineH = fontSize * 1.2;                   // 屏幕行高
         const canvasLineH = canvasFontSize * 1.2;       // 画布行高
+
+        // 默认固定宽度（点击时使用）
+        const DEFAULT_WIDTH = Math.max(120, fontSize * 8);
 
         textInput.style.display = 'block';
         textInput.style.left = clientX + 'px';
@@ -867,9 +881,19 @@
         textInput.style.fontSize = fontSize + 'px';
         textInput.style.lineHeight = '1.2';
         textInput.style.height = lineH + 'px';          // 初始单行高度
-        textInput.style.width = Math.max(120, fontSize * 5) + 'px'; // 初始宽度
-        textInput.value = '';
-        setTimeout(() => textInput.focus(), 10);
+        textInput._widthLocked = false;
+        textInput._dragWidth = null;
+
+        if (isDrag) {
+            // 拖拽模式：初始宽度极小，由 mousemove 实时更新，不聚焦（鼠标还在拖拽中）
+            textInput.style.width = '4px';
+            textInput.value = '';
+        } else {
+            // 点击模式：使用固定宽度并聚焦
+            textInput.style.width = DEFAULT_WIDTH + 'px';
+            textInput.value = '';
+            setTimeout(() => textInput.focus(), 10);
+        }
 
         // 自动撑高：每次输入后重算高度
         function autoResize() {
@@ -937,6 +961,25 @@
 
     window.onmousemove = e => {
         if (isPanning) { scrollX += e.movementX; scrollY += e.movementY; updateTransform(); }
+
+        // 文字工具：检测是否进入拖拽状态
+        if (tool === 'text' && textDragActive && !textIsDragging) {
+            const dx = e.clientX - textMouseDownClientX;
+            const dy = e.clientY - textMouseDownClientY;
+            if (Math.sqrt(dx*dx + dy*dy) > TEXT_DRAG_THRESHOLD) {
+                textIsDragging = true;
+                viewport.style.cursor = 'ew-resize';
+                textInput.style.pointerEvents = 'none';
+                // 开始显示拖拽预览文本框
+                showTextInput(textMouseDownClientX, textMouseDownClientY, textMouseDownWorldX, textMouseDownWorldY, true);
+            }
+        }
+        // 文字工具拖拽中：实时更新输入框宽度
+        if (tool === 'text' && textDragActive && textIsDragging && textInput.style.display === 'block') {
+            const newClientWidth = Math.max(60, e.clientX - textMouseDownClientX);
+            textInput.style.width = newClientWidth + 'px';
+            textInput._dragWidth = newClientWidth;
+        }
 
         // 裁剪工具拖拽预览
         if (tool === 'crop' && isCropping) {
@@ -1069,6 +1112,24 @@
     };
 
     window.onmouseup = () => { 
+        // 文字工具：mouseup 时判断是点击还是拖拽结束
+        if (tool === 'text' && textDragActive) {
+            textDragActive = false;
+            if (!textIsDragging) {
+                // 纯点击：使用默认宽度打开输入框
+                showTextInput(textMouseDownClientX, textMouseDownClientY, textMouseDownWorldX, textMouseDownWorldY, false);
+            } else {
+                // 拖拽结束：宽度已经由 mousemove 锁定，聚焦输入框
+                textIsDragging = false;
+                viewport.style.cursor = 'crosshair';
+                textInput.style.pointerEvents = 'auto';
+                if (textInput.style.display === 'block') {
+                    textInput._widthLocked = true;
+                    setTimeout(() => textInput.focus(), 10);
+                }
+            }
+            return;
+        }
         if (tool === 'crop' && isCropping) {
             isCropping = false;
             const w = Math.round(Math.abs(cropEndX - cropStartX));
@@ -1598,10 +1659,10 @@
         const WHEEL_TOOLS = [
             { id: 'pen',    icon: '✏',  label: '画笔',   action: () => { setTool('pen',            document.getElementById('penBtn'));    } },
             { id: 'eraser', icon: '⛫',  label: '橡皮擦', action: () => { setTool('eraser-circle',  document.getElementById('eraserBtn')); } },
-            { id: 'arrow',  icon: '➔',  label: '箭头',   action: () => { setTool('arrow',           document.getElementById('arrowBtn'));  } },
-            { id: 'shape',  icon: () => getShapeIcon(), label: '形状', action: () => { setTool(currentShape, document.getElementById('shapeBtn')); } },
-            { id: 'stamp',  icon: () => getStampIcon(), label: '印章', action: () => { setTool(currentStamp, document.getElementById('stampBtn')); } },
             { id: 'line',   icon: () => getLineIcon(),  label: '直线', action: () => { setTool(currentLineStyle, document.getElementById('lineBtn')); } },
+            { id: 'arrow',  icon: '➔',  label: '箭头',   action: () => { setTool('arrow',           document.getElementById('arrowBtn'));  } },
+            { id: 'stamp',  icon: () => getStampIcon(), label: '印章', action: () => { setTool(currentStamp, document.getElementById('stampBtn')); } },
+            { id: 'shape',  icon: () => getShapeIcon(), label: '形状', action: () => { setTool(currentShape, document.getElementById('shapeBtn')); } },
             { id: 'text',   icon: 'T',  label: '文字',   action: () => { setTool('text',            document.getElementById('textBtn'));   } },
             { id: 'crop',   icon: '✂',  label: '裁剪',   action: () => { setTool('crop',            document.getElementById('cropBtn'));   } },
         ];
