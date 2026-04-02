@@ -577,7 +577,7 @@
     let textDragActive = false, textIsDragging = false;
     let textMouseDownClientX = 0, textMouseDownClientY = 0;
     let textMouseDownWorldX = 0, textMouseDownWorldY = 0;
-    const TEXT_DRAG_THRESHOLD = 5; // 超过此像素距离才算拖拽
+    const TEXT_DRAG_THRESHOLD = 5;
     let currentShape = 'rect';
     let currentLineStyle = 'line-solid';
     let currentStamp = 'stamp-check';
@@ -864,92 +864,124 @@
         }
     };
 
-    // 动态文本功能
-    function showTextInput(clientX, clientY, worldX, worldY, isDrag) {
-        const fontSize = lineWidthInput.value * 2 + 16; // 屏幕像素字号
-        const canvasFontSize = fontSize / scale;         // 画布坐标字号
-        const lineH = fontSize * 1.2;                   // 屏幕行高
-        const canvasLineH = canvasFontSize * 1.2;       // 画布行高
+    // =====================================================================
+    // 文字工具
+    // 核心设计：输入框完全用画布坐标系定位，字号随 scale 实时同步，
+    // 提交时直接用原始 worldX/worldY，无需任何补偿偏移。
+    // =====================================================================
 
-        // 默认固定宽度（点击时使用）
-        const DEFAULT_WIDTH = Math.max(120, fontSize * 8);
+    // 把画布坐标转为屏幕坐标（与 getMousePos 互逆）
+    function worldToClient(wx, wy) {
+        return { x: wx * scale + scrollX, y: wy * scale + scrollY };
+    }
 
-        textInput.style.display = 'block';
-        textInput.style.left = clientX + 'px';
-        textInput.style.top = (clientY - fontSize / 2) + 'px';
-        textInput.style.color = currentColor;
-        textInput.style.fontSize = fontSize + 'px';
+    // 根据当前 scale 刷新输入框字号与行高，供外部（缩放）时调用
+    function refreshTextInputStyle() {
+        if (textInput.style.display !== 'block') return;
+        const fs = textInput._canvasFontSize * scale; // 屏幕像素字号
+        textInput.style.fontSize   = fs + 'px';
         textInput.style.lineHeight = '1.2';
-        textInput.style.height = lineH + 'px';          // 初始单行高度
-        textInput._widthLocked = false;
-        textInput._dragWidth = null;
+        // 重新定位：以锚点世界坐标换算为当前屏幕位置
+        const sc = worldToClient(textInput._anchorWorldX, textInput._anchorWorldY);
+        textInput.style.left = sc.x + 'px';
+        textInput.style.top  = sc.y + 'px';
+        // 宽度同步缩放
+        textInput.style.width = (textInput._canvasWidth * scale) + 'px';
+        // 高度重新自动撑
+        textInput.style.height = 'auto';
+        textInput.style.height = textInput.scrollHeight + 'px';
+    }
 
-        if (isDrag) {
-            // 拖拽模式：初始宽度极小，由 mousemove 实时更新，不聚焦（鼠标还在拖拽中）
-            textInput.style.width = '4px';
-            textInput.value = '';
-        } else {
-            // 点击模式：使用固定宽度并聚焦
-            textInput.style.width = DEFAULT_WIDTH + 'px';
-            textInput.value = '';
-            setTimeout(() => textInput.focus(), 10);
-        }
+    function showTextInput(clientX, clientY, worldX, worldY, isDrag) {
+        // 画布字号（与 scale 无关的固定值）
+        const canvasFontSize = parseInt(lineWidthInput.value) * 2 + 16;
+        const screenFontSize = canvasFontSize * scale;
 
-        // 自动撑高：每次输入后重算高度
-        function autoResize() {
+        // 默认画布宽度（点击时）
+        const defaultCanvasW = Math.max(120 / scale, canvasFontSize * 8);
+
+        // 锚点：输入框左上角对应的画布坐标
+        // clientY 对应的画布 Y 坐标即为 worldY（textBaseline='top'）
+        textInput._canvasFontSize = canvasFontSize;
+        textInput._canvasWidth    = isDrag ? 0 : defaultCanvasW;
+
+        // textarea 有 padding: 2px 4px，文字从 (left+4, top+2) 开始渲染
+        // 把 padding 折算回画布坐标，让锚点对齐实际文字起点
+        const PAD_X = 4, PAD_Y = 2;
+        textInput._anchorWorldX = worldX - PAD_X / scale;
+        textInput._anchorWorldY = worldY - PAD_Y / scale;
+
+        // 屏幕定位
+        textInput.style.left      = clientX + 'px';
+        textInput.style.top       = clientY + 'px';
+        textInput.style.fontSize  = screenFontSize + 'px';
+        textInput.style.lineHeight = '1.2';
+        textInput.style.color     = currentColor;
+        textInput.style.height    = (screenFontSize * 1.2) + 'px';
+        textInput.style.width     = isDrag ? '4px' : (defaultCanvasW * scale) + 'px';
+        textInput.value           = '';
+        textInput.style.display   = 'block';
+
+        // 自动撑高
+        textInput.oninput = () => {
             textInput.style.height = 'auto';
             textInput.style.height = textInput.scrollHeight + 'px';
-        }
-        textInput.oninput = autoResize;
+        };
 
         function commitText() {
             const text = textInput.value;
             if (!text.trim()) { closeTextInput(false); return; }
 
-            // 获取输入框当前屏幕宽度，换算为画布宽度作为换行依据
-            const boxScreenW = textInput.offsetWidth - 8; // 减去padding
-            const boxCanvasW = boxScreenW / scale;
+            // 从 DOM 实际位置反推画布坐标，自动吸收 padding、缩放、拖拽等所有偏移
+            const rect = textInput.getBoundingClientRect();
+            const style = window.getComputedStyle(textInput);
+            const padL = parseFloat(style.paddingLeft);
+            const padT = parseFloat(style.paddingTop);
+            // 文字实际起点（屏幕坐标）= rect左上角 + padding + border(1px)
+            const textClientX = rect.left + padL + 1;
+            const textClientY = rect.top  + padT + 1;
+            // 换算回画布坐标
+            const drawX = (textClientX - scrollX) / scale;
+            const drawY = (textClientY - scrollY) / scale;
 
-            ctx.fillStyle = currentColor;
-            ctx.font = `${canvasFontSize}px Arial`;
+            // 换行宽度 = 内容区屏幕宽度 / scale
+            const contentScreenW = rect.width - padL - parseFloat(style.paddingRight) - 2;
+            const boxCanvasW = contentScreenW / scale;
+            const canvasLineH = canvasFontSize * 1.2;
+
+            ctx.save();
+            ctx.fillStyle    = currentColor;
+            ctx.font         = `${canvasFontSize}px Arial`;
             ctx.textBaseline = 'top';
 
-            // 将文字按换行符分段，再在每段内按画布宽度自动换行
-            const paragraphs = text.split('\n');
-            let lineY = worldY - canvasFontSize * 0.1;
-            for (const para of paragraphs) {
+            let lineY = drawY;
+            for (const para of text.split('\n')) {
                 if (para === '') { lineY += canvasLineH; continue; }
-                // 逐字测量，超宽则换行
                 let line = '';
                 for (const ch of para) {
                     const test = line + ch;
-                    if (ctx.measureText(test).width > boxCanvasW && line !== '') {
-                        ctx.fillText(line, worldX, lineY);
+                    if (ctx.measureText(test).width > boxCanvasW && line) {
+                        ctx.fillText(line, drawX, lineY);
                         lineY += canvasLineH;
                         line = ch;
                     } else {
                         line = test;
                     }
                 }
-                if (line) { ctx.fillText(line, worldX, lineY); lineY += canvasLineH; }
+                if (line) { ctx.fillText(line, drawX, lineY); lineY += canvasLineH; }
             }
 
-            ctx.textBaseline = 'alphabetic'; // 恢复默认
+            ctx.restore();
             closeTextInput(true);
         }
 
         textInput.onkeydown = (e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                commitText();
-            } else if (e.key === 'Escape') {
-                closeTextInput(false);
-            }
-            // Shift+Enter 正常换行，由textarea默认行为处理，之后触发oninput自动撑高
+            if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); commitText(); }
+            else if (e.key === 'Escape') closeTextInput(false);
         };
 
-        // 暴露给外部调用（点击其他区域提交）
         textInput._commit = commitText;
+        if (!isDrag) setTimeout(() => textInput.focus(), 10);
     }
 
     function closeTextInput(save) {
@@ -974,11 +1006,11 @@
                 showTextInput(textMouseDownClientX, textMouseDownClientY, textMouseDownWorldX, textMouseDownWorldY, true);
             }
         }
-        // 文字工具拖拽中：实时更新输入框宽度
+        // 文字工具拖拽中：实时更新输入框宽度（同步画布坐标记录）
         if (tool === 'text' && textDragActive && textIsDragging && textInput.style.display === 'block') {
             const newClientWidth = Math.max(60, e.clientX - textMouseDownClientX);
             textInput.style.width = newClientWidth + 'px';
-            textInput._dragWidth = newClientWidth;
+            textInput._canvasWidth = newClientWidth / scale;
         }
 
         // 裁剪工具拖拽预览
@@ -1124,7 +1156,6 @@
                 viewport.style.cursor = 'crosshair';
                 textInput.style.pointerEvents = 'auto';
                 if (textInput.style.display === 'block') {
-                    textInput._widthLocked = true;
                     setTimeout(() => textInput.focus(), 10);
                 }
             }
@@ -1152,7 +1183,7 @@
     };
 
     function getMousePos(e) { return { x: (e.clientX - scrollX) / scale, y: (e.clientY - scrollY) / scale }; }
-    function updateTransform() { requestAnimationFrame(() => { const t = `translate(${scrollX}px, ${scrollY}px) scale(${scale})`; bg.style.transform = t; canvas.style.transform = t; }); }
+    function updateTransform() { requestAnimationFrame(() => { const t = `translate(${scrollX}px, ${scrollY}px) scale(${scale})`; bg.style.transform = t; canvas.style.transform = t; refreshTextInputStyle(); }); }
     function fitToWindow() {
         const margin = 60;
         scale = Math.min((window.innerWidth - margin) / canvas.width, (window.innerHeight - margin) / canvas.height);
