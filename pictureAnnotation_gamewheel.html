@@ -1478,17 +1478,21 @@
         const h = Math.round(Math.abs(cropEndY - cropStartY));
         if (w < 1 || h < 1) return;
 
-        // 截取合并图像的指定区域
-        const merged = getMergedCanvas();
-        const cropped = document.createElement('canvas');
-        cropped.width = w; cropped.height = h;
-        cropped.getContext('2d').drawImage(merged, x, y, w, h, 0, 0, w, h);
+        // 分别裁剪背景层和批注层，保持两层独立
+        function cropLayer(src) {
+            const tmp = document.createElement('canvas');
+            tmp.width = w; tmp.height = h;
+            tmp.getContext('2d').drawImage(src, x, y, w, h, 0, 0, w, h);
+            return tmp;
+        }
+        const croppedBg   = cropLayer(bg);
+        const croppedDraw = cropLayer(canvas);
 
-        // 重置画布为裁剪后的内容
         bg.width = w; bg.height = h;
         canvas.width = w; canvas.height = h;
-        bgCtx.drawImage(cropped, 0, 0);
-        ctx.clearRect(0, 0, w, h);
+        bgCtx.drawImage(croppedBg, 0, 0);
+        ctx.drawImage(croppedDraw, 0, 0);
+
         history = [];
         saveState();
 
