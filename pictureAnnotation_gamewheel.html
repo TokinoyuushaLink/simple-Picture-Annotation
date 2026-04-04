@@ -324,6 +324,12 @@
         font-size: 26px;
         fill: rgba(255,255,255,1);
     }
+    .wheel-slice.color-mode .wheel-icon {
+        fill: rgba(255,255,255,1);
+    }
+    .wheel-slice.color-mode.hovered .wheel-icon {
+        font-size: 28px;
+    }
 
     #wheel-center-ring { pointer-events: none; }
 </style>
@@ -600,7 +606,7 @@
     window.addEventListener('resize', syncCropOverlay);
 
     // 初始化颜色面板
-    const basicColors = ['#ff0000', '#00ff00', '#0000ff', '#ffff00', '#ff00ff', '#00ffff', '#000000', '#ffffff'];
+    const basicColors = ['#ff0000', '#ff8000', '#ffff00', '#00ff00', '#0000ff', '#ff00ff', '#000000', '#ffffff'];
     const customColorInput = document.getElementById('customColor');
 
     function createColorDot(color, containerId, isCustom = false) {
@@ -1731,7 +1737,19 @@
             'crop':   null,
         };
 
-        // 当前圆盘模式：'main' | 'sub'
+        // 颜色圆盘定义（emoji 方块文字 + 对应色值，与工具栏基础颜色顺序一致）
+        const COLOR_WHEEL_TOOLS = [
+            { id: 'color-red',    icon: '🟥', label: '红色',   color: '#ff0000' },
+            { id: 'color-orange', icon: '🟧', label: '橙色',   color: '#ff8000' },
+            { id: 'color-yellow', icon: '🟨', label: '黄色',   color: '#ffff00' },
+            { id: 'color-green',  icon: '🟩', label: '绿色',   color: '#00ff00' },
+            { id: 'color-blue',   icon: '🟦', label: '蓝色',   color: '#0000ff' },
+            { id: 'color-purple', icon: '🟪', label: '紫色',   color: '#ff00ff' },
+            { id: 'color-black',  icon: '⬛', label: '黑色',   color: '#000000' },
+            { id: 'color-white',  icon: '⬜', label: '白色',   color: '#ffffff' },
+        ];
+
+        // 当前圆盘模式：'main' | 'sub' | 'color'
         let wheelMode = 'main';
         let subToolId = null;   // 进入子圆盘时对应的主工具 id
 
@@ -1825,6 +1843,7 @@
 
                 const g = makeSvg('g');
                 g.classList.add('wheel-slice');
+                if (wheelMode === 'color') g.classList.add('color-mode');
                 g.dataset.index = i;
 
                 // 合并背景填充 + 边框描边为一个 path（减少 DOM 节点 & 路径计算各一半）
@@ -1853,12 +1872,13 @@
             });
 
             // 复用已创建的中心圆与模式标签
-            modeLabelEl.textContent = wheelMode === 'sub' ? '子工具' : '';
+            modeLabelEl.textContent = wheelMode === 'sub' ? '子工具' : wheelMode === 'color' ? '颜色' : '';
             svgEl.append(centerCircle, modeLabelEl);
         }
 
         // 获取当前活动工具列表
         function activeTools() {
+            if (wheelMode === 'color') return COLOR_WHEEL_TOOLS;
             if (wheelMode === 'sub' && subToolId && SUB_WHEEL_TOOLS[subToolId]) {
                 return SUB_WHEEL_TOOLS[subToolId];
             }
@@ -1935,7 +1955,15 @@
             wheelOpen = false;
 
             if (activate && hoveredIndex >= 0) {
-                activeTools()[hoveredIndex].action();
+                const tools = activeTools();
+                const t = tools[hoveredIndex];
+                if (wheelMode === 'color' && t && t.color) {
+                    // 颜色模式：直接设置当前颜色
+                    currentColor = t.color;
+                    document.getElementById('customColor').value = t.color;
+                } else {
+                    t && t.action && t.action();
+                }
                 // 子工具切换后，刷新主圆盘印章图标（下次打开时自动读取）
             }
 
@@ -2007,6 +2035,25 @@
             updateHover(lastMouseX, lastMouseY);
         }
 
+        // 切换到颜色圆盘（Tab 键触发）
+        function switchColorMode() {
+            if (!wheelOpen) return;
+            hoveredIndex = -1;
+            if (wheelMode === 'color') {
+                // 再按 Tab 切回主圆盘
+                wheelMode = 'main';
+                subToolId = null;
+                buildWheel(WHEEL_TOOLS);
+                hideSubHint();
+            } else {
+                wheelMode = 'color';
+                subToolId = null;
+                buildWheel(COLOR_WHEEL_TOOLS);
+                hideSubHint();
+            }
+            updateHover(lastMouseX, lastMouseY);
+        }
+
         window.onkeydown = function(e) {
             // 空格：打开圆盘（若文本输入框激活则放行）
             if (e.code === 'Space' && !spaceHeld && document.activeElement !== textInput) {
@@ -2016,6 +2063,12 @@
                 openWheel(lastMouseX, lastMouseY, 'main', null);
                 // 如果已经按住 Shift，立即切换
                 if (e.shiftKey) switchWheelMode(true);
+                return;
+            }
+            // 圆盘打开时按 Tab → 切换颜色圆盘
+            if (e.code === 'Tab' && !e.repeat && wheelOpen) {
+                e.preventDefault();
+                switchColorMode();
                 return;
             }
             // 圆盘打开时按下 Shift → 切到子工具（e.repeat 过滤持续触发）
