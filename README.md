@@ -10,7 +10,7 @@
   - 切换线条工具的水平或竖直约束
   - 临时切换画笔工具的直线
   - 反转箭头方向
-- space打开圆盘，shift切换圆盘子工具(game-wheel version)
+- space打开圆盘，shift切换圆盘子工具(game-wheel version)，tab键切换颜色选择
 - 鼠标中键缩放视图到窗口
 - 文字工具使用enter进行提交，shift+Enter进行换行，Esc取消
 - Tab键隐藏工具栏
